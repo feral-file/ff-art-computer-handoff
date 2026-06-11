@@ -1,0 +1,11 @@
+.env*
+**/node_modules
+**/dist
+**/coverage
+clients/feral_file_art_computer_handoff/.dart_tool
+clients/feral_file_art_computer_handoff/build
+clients/feral_file_art_computer_handoff/.packages
+data
+tmp
+*.lmdb
+*.mdb

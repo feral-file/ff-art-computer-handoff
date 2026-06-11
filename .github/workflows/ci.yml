@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - run: npm run lint
+        working-directory: server
+      - run: npm run typecheck
+        working-directory: server
+      - run: npm test
+        working-directory: server
+
+  session-recipient:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/session-recipient/js/package-lock.json
+      - run: npm ci
+        working-directory: clients/session-recipient/js
+      - run: npm run lint
+        working-directory: clients/session-recipient/js
+      - run: npm run typecheck
+        working-directory: clients/session-recipient/js
+      - run: npm test
+        working-directory: clients/session-recipient/js
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: clients/ff-controller/flutter
+      - run: dart format --set-exit-if-changed .
+        working-directory: clients/ff-controller/flutter
+      - run: flutter analyze
+        working-directory: clients/ff-controller/flutter
+      - run: flutter test
+        working-directory: clients/ff-controller/flutter
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: clients/session-recipient/js
+      - run: npm ci
+        working-directory: integration
+      - run: npm run lint
+        working-directory: integration
+      - run: npm run typecheck
+        working-directory: integration
+      - run: npm test
+        working-directory: integration
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ff-browser-session-handoff:ci

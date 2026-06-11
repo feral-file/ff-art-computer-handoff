@@ -1,0 +1,138 @@
+name: Build Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional image tag override (defaults to 12-char git SHA)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  DOCR_REGISTRY_NAME: feral-file
+  DOCR_REGISTRY: registry.digitalocean.com/feral-file
+  DOCR_REPOSITORY: apps
+  DOCR_TAG_PREFIX: browser-session-handoff-
+  DOCR_KEEP_IMAGES: "3"
+
+jobs:
+  build:
+    name: Build & push
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: determine-tag
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "tag=browser-session-handoff-${INPUT_VERSION}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag=browser-session-handoff-${GIT_SHA::12}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_DOCR_TOKEN }}
+
+      - name: Login to DOCR
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Configure Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCR_REGISTRY }}/${{ env.DOCR_REPOSITORY }}
+          tags: |
+            type=raw,value=${{ steps.determine-tag.outputs.tag }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+
+      - name: Clean up older DOCR tags for browser session handoff
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          DO_TOKEN: ${{ secrets.DIGITALOCEAN_DOCR_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime
+
+          token = os.environ["DO_TOKEN"]
+          registry = os.environ["DOCR_REGISTRY_NAME"]
+          repository = os.environ["DOCR_REPOSITORY"]
+          prefix = os.environ["DOCR_TAG_PREFIX"]
+          keep = int(os.environ["DOCR_KEEP_IMAGES"])
+
+          def request_json(url: str, method: str = "GET") -> dict:
+              req = urllib.request.Request(
+                  url,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(req) as response:
+                  if response.status == 204:
+                      return {}
+                  return json.load(response)
+
+          tags = []
+          url = (
+              f"https://api.digitalocean.com/v2/registry/{registry}/repositories/"
+              f"{repository}/tags?page=1&per_page=200"
+          )
+          while url:
+              payload = request_json(url)
+              tags.extend(payload.get("tags", []))
+              url = payload.get("links", {}).get("pages", {}).get("next")
+
+          matching = [tag for tag in tags if tag.get("tag", "").startswith(prefix)]
+          matching.sort(
+              key=lambda item: datetime.fromisoformat(
+                  item["updated_at"].replace("Z", "+00:00")
+              ),
+              reverse=True,
+          )
+
+          for item in matching[keep:]:
+              encoded_tag = urllib.parse.quote(item["tag"], safe="")
+              delete_url = (
+                  f"https://api.digitalocean.com/v2/registry/{registry}/repositories/"
+                  f"{repository}/tags/{encoded_tag}"
+              )
+              request_json(delete_url, method="DELETE")
+              print(f"Deleted tag: {item['tag']}")
+          PY
+
+      - name: Summarize published image
+        run: |
+          echo "Published image:"
+          echo "${DOCR_REGISTRY}/${DOCR_REPOSITORY}:${{ steps.determine-tag.outputs.tag }}"
