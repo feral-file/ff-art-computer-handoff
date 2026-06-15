@@ -36,3 +36,9 @@ docker run --rm -p 3000:3000 -v ff-browser-session-handoff-data:/data ff-browser
 ```
 
 The manual GitHub Actions workflow `.github/workflows/build-image.yml` publishes to DigitalOcean Container Registry under `registry.digitalocean.com/feral-file/apps`. It requires the `DIGITALOCEAN_DOCR_TOKEN` secret in the production environment.
+
+## License
+
+This repository's source code is licensed under the Apache License, Version 2.0. See [LICENSE](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/LICENSE) and [NOTICE](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/NOTICE).
+
+The license does not grant rights to Feral File trademarks, service marks, product names, artwork, production credentials, hosted services, or DP1 playlist content.
