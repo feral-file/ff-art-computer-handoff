@@ -146,7 +146,7 @@ for the allowed cast/display path and do not grant broader API-key access.
 ### Mint Pairing Broker
 
 The Mint Pairing Broker is a narrow bridge between token requesters and token
-minters. It stores receiver records and opaque encrypted messages in durable LMDB
+minters. It stores receiver records and opaque encrypted messages in durable bbolt
 state, backed by the Docker volume in deployed environments, for a short pairing
 window. The broker does not interpret whether a message is a mint request, an
 approval result, a token payload, or any other content because request and
@@ -155,7 +155,7 @@ response messages are end-to-end encrypted between the requester and minter.
 The broker enforces strict request and payload limits to bound abuse and storage
 growth. The current encrypted payload limit is 64 KiB, which is intentionally
 larger than expected token-mint metadata while still small enough for short-lived
-LMDB storage and HTTP polling.
+bbolt storage and HTTP polling.
 
 ### FF1 / feral-controld and Frontend
 

@@ -6,14 +6,14 @@ This repository is a minimal secure prototype for ephemeral browser session mint
 
 The target parties are an NFT display website embedding the token requester browser library, FF1 `feral-controld` using a Go ephemeral token minter library, the FF1 frontend that displays the pairing QR/code, `ff-controller` as an approval UI reached through `ff-relayer`, `ff-relayer`, and the FF1 display path. The token minter creates a temporary mint receiver through the server in `server/`, establishes end-to-end encrypted communication with the NFT display website, asks `ff-controller` to approve or reject the requester metadata through `ff-relayer`, mints an ephemeral browser session through `ff-relayer` on approval, and transfers the token back to the NFT display website through the encrypted broker path. The current token requester implementation is a browser library that stores the recovered token in `localStorage` under the current website origin and uses it to request DP1 playlist display through `ff-relayer`. DP1 playlist content must not travel through `ff-controller`, the token minter, or the server.
 
-The server in `server/` is now referred to in design docs as the Mint Pairing Broker rather than the handoff server. It remains a short-lived opaque E2EE transport backed by durable LMDB state.
+The server in `server/` is now referred to in design docs as the Mint Pairing Broker rather than the handoff server. It remains a short-lived opaque E2EE transport backed by durable bbolt state in the target design.
 
 The sequential flow lives in `docs/sequential-flow.md`. Component-specific rules live in each component's `AGENTS.md`.
 
 ## Directory Structure
 
-- `docs/`: shared architecture and flow documentation.
-- `server/`: Node.js, Fastify, TypeScript, LMDB-backed Mint Pairing Broker.
+- `docs/`: shared architecture, flow, server design, and API design documentation.
+- `server/`: current Node.js/Fastify/TypeScript prototype; target design is a Go, bbolt-backed Mint Pairing Broker.
 - `clients/session-recipient/js/`: TypeScript token requester library embedded by NFT display websites.
 - `clients/ephemeral-token-minter/go/`: planned Go ephemeral token minter library used by FF1 `feral-controld`.
 - `clients/ff-controller/flutter/`: legacy Flutter/Dart implementation from the old flow; remove or replace in the code migration.
@@ -71,7 +71,7 @@ npm test
 ## Coding Rules
 
 - Do not introduce in-memory maps for sessions, payloads, token state, expiry state, or test shortcuts.
-- Every server state transition must read from and write to LMDB.
+- Every server state transition must read from and write to bbolt in the target design.
 - Keep TypeScript strict mode, `noUncheckedIndexedAccess`, and type-aware ESLint rules enabled.
 - Keep Go code idiomatic, formatted with `gofmt`, and covered by `go test ./...` once the minter exists.
 - Prefer small, explicit protocol structures over loosely typed JSON.
@@ -79,14 +79,14 @@ npm test
 
 ## Dependency Rules
 
-- Server storage must remain a local durable embedded KV store, currently LMDB.
+- Server storage must remain a local durable embedded KV store, target bbolt.
 - Do not add Redis, Postgres, WebSockets, SSE, or external queue dependencies without human approval.
 - Go crypto must use maintained standard-library or reviewed crypto packages. Do not implement elliptic-curve math manually.
 
 ## Product Scope Rules
 
 - Optimize names and APIs for NFT display websites, the requester library they embed, the ephemeral token minter, `ff-controller`, the Mint Pairing Broker, and `ff-relayer`.
-- Keep requester clients general for browsers and future third-party clients granted through the token minter.
+- Keep the requester library general for NFT display websites and future third-party browser clients granted through the token minter.
 - Keep `ff-controller` as an approval surface; do not make it the browser-session token minter in the new flow.
 - Do not implement flow changes unless explicitly requested.
 
@@ -102,7 +102,7 @@ npm test
 
 Server:
 
-- LMDB is the source of truth.
+- bbolt is the target source of truth.
 - No in-memory session or payload state.
 - Token hashes are stored where tokens must be persisted.
 - Expiry, revoke, duplicate claim, and oversized payload paths are covered when implemented.

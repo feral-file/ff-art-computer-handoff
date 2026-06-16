@@ -16,7 +16,7 @@ npm run build
 
 ## Rules
 
-- LMDB is the source of truth for server state.
+- bbolt is the target source of truth for server state.
 - Do not add in-memory maps for sessions, payloads, token state, expiry state, or test shortcuts.
 - Do not log bearer tokens, raw session tokens, or playlist content.
 - Do not turn this service into a DP1 playlist proxy.

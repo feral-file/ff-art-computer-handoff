@@ -8,12 +8,18 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 
 ## Components
 
-- [server](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/server/README.md): Node.js/Fastify Mint Pairing Broker backed by LMDB.
+- [server](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/server/README.md): current Node.js/Fastify prototype; target Mint Pairing Broker should be Go with bbolt storage.
 - [clients/session-recipient/js](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites.
 - `clients/ephemeral-token-minter/go` (planned): Go library used by FF1 `feral-controld` to create mint receivers, coordinate approval through `ff-relayer`, and mint browser sessions.
 - [integration](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/integration/README.md): Vitest integration tests.
 - `.github/workflows/ci.yml`: CI for server, NFT display website requester library, token minter, and integration tests after the implementation is updated.
 - `Dockerfile`: Production image for the Mint Pairing Broker.
+
+## Design Docs
+
+- [Sequential flow](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/sequential-flow.md)
+- [Server design](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/server-design.md)
+- [API design](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/api-design.md)
 
 Implementation status: the code still contains the earlier Flutter controller library and earlier handoff-shaped browser APIs. Those are legacy for the new design and should be removed or replaced in a follow-up code change; this update only changes documentation.
 
@@ -29,7 +35,7 @@ cd integration && npm ci && npm run lint && npm run typecheck && npm test
 
 ## Deployment
 
-The Docker image runs the Mint Pairing Broker. It listens on `PORT`, defaults to `3000`, and stores LMDB state at `DB_PATH`, defaults to `/data/lmdb`. Mount `/data` as durable storage in persistent environments.
+The target Docker image runs the Mint Pairing Broker. It listens on `PORT`, defaults to `3000`, and stores bbolt state at `DB_PATH`, expected to be a file path such as `/data/mint-pairing.db`. Mount `/data` as durable storage in persistent environments.
 
 ```sh
 docker build -t ff-mint-pairing-broker:local .
