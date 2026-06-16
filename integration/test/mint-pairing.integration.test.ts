@@ -106,16 +106,17 @@ async function waitForPublishedPort(containerId: string): Promise<string> {
   throw new Error(`broker container did not publish 8080/tcp. logs:\n${lastLogs}`);
 }
 
-async function startBroker(dataDir?: string): Promise<DockerBroker> {
+async function startBroker(dataDir?: string, hostPort?: string): Promise<DockerBroker> {
   const brokerDataDir = dataDir ?? mkdtempSync(join(tmpdir(), "mint-pairing-broker-"));
   chmodSync(brokerDataDir, 0o777);
   tempDirs.push(brokerDataDir);
+  const portArg = hostPort === undefined ? "127.0.0.1::8080" : `127.0.0.1:${hostPort}:8080`;
   const containerId = docker([
     "run",
     "--rm",
     "-d",
     "-p",
-    "127.0.0.1::8080",
+    portArg,
     "-v",
     `${brokerDataDir}:/data`,
     imageTag
@@ -298,8 +299,12 @@ describe("mint pairing integration", () => {
       origin: "https://nft.example"
     });
 
+    const brokerPort = new URL(broker.baseUrl).port;
+    stopBroker(broker.containerId);
+    const restartedAfterMessageBroker = await startBroker(broker.dataDir, brokerPort);
+
     await sendMintSuccess({
-      baseUrl: broker.baseUrl,
+      baseUrl: restartedAfterMessageBroker.baseUrl,
       channelId: created.channelId,
       minterToken: created.minterToken,
       minterPrivateKey: minterKeyPair.privateKey,

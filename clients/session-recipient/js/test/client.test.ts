@@ -220,6 +220,47 @@ describe("requestEphemeralSession", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
+  it("rejects a join response with a substituted minter public key", async () => {
+    const pairingMinterKeyPair = await generateBrowserKeyPair();
+    const pairingMinterPublicKeyJwk = await exportPublicJwk(pairingMinterKeyPair.publicKey);
+    const substitutedMinterKeyPair = await generateBrowserKeyPair();
+    const substitutedMinterPublicKeyJwk = await exportPublicJwk(substitutedMinterKeyPair.publicKey);
+    const fetchImpl = vi.fn<typeof fetch>((input) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/v1/channels/ch_123/join")) {
+        return Promise.resolve(jsonResponse({
+          channelId: "ch_123",
+          browserToken: "bt_123",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk: substitutedMinterPublicKeyJwk,
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          nextSeq: 1
+        }));
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+
+    await expect(requestEphemeralSession({
+      pairing: {
+        qrPayload: {
+          v: 1,
+          type: "ff-mint-pairing",
+          brokerBaseUrl: "https://pairing.example",
+          channelId: "ch_123",
+          pairingToken: "pt_123",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk: pairingMinterPublicKeyJwk
+        }
+      },
+      origin: "https://nft.example",
+      storage: false,
+      pollIntervalMs: 1,
+      fetchImpl
+    })).rejects.toThrow("channel join minter key mismatch");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps storage keys origin scoped", () => {
     const storage = memoryStorage();
     storeEphemeralBrowserSession(storage, "https://nft.example", {

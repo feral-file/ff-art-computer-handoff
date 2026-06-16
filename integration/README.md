@@ -2,7 +2,7 @@
 
 `integration/` contains Vitest tests for cross-component behavior.
 
-Integration coverage should exercise the mint pairing flow described in [Sequential Flow](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/sequential-flow.md): NFT display website with embedded token requester library, Go ephemeral token minter embedded in FF1 `feral-controld`, FF1 frontend QR/code display, `ff-controller` approval UI reached through `ff-relayer`, FF1 display path, and the Mint Pairing Broker as the short-lived opaque E2EE transport.
+Integration coverage should exercise the mint pairing flow described in [Sequential Flow](../docs/sequential-flow.md): NFT display website with embedded token requester library, Go ephemeral token minter embedded in FF1 `feral-controld`, FF1 frontend QR/code display, `ff-controller` approval UI reached through `ff-relayer`, FF1 display path, and the Mint Pairing Broker as the short-lived opaque E2EE transport.
 
 ## Commands
 

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 var testPublicJWK = json.RawMessage(`{"kty":"EC","crv":"P-256","x":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","y":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
@@ -18,14 +21,18 @@ type testEnv struct {
 	broker *Broker
 	server *httptest.Server
 	clock  *time.Time
+	dbPath string
 }
 
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	start := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
-	env := &testEnv{clock: &start}
+	env := &testEnv{
+		clock:  &start,
+		dbPath: filepath.Join(t.TempDir(), "broker.db"),
+	}
 	broker, err := NewBroker(Config{
-		DBPath:        filepath.Join(t.TempDir(), "broker.db"),
+		DBPath:        env.dbPath,
 		BrokerBaseURL: "https://pairing.test",
 		Now: func() time.Time {
 			return *env.clock
@@ -43,6 +50,26 @@ func newTestEnv(t *testing.T) *testEnv {
 		}
 	})
 	return env
+}
+
+func (env *testEnv) restart(t *testing.T) {
+	t.Helper()
+	env.server.Close()
+	if err := env.broker.Close(); err != nil {
+		t.Fatalf("close broker before restart: %v", err)
+	}
+	broker, err := NewBroker(Config{
+		DBPath:        env.dbPath,
+		BrokerBaseURL: "https://pairing.test",
+		Now: func() time.Time {
+			return *env.clock
+		},
+	})
+	if err != nil {
+		t.Fatalf("restart broker: %v", err)
+	}
+	env.broker = broker
+	env.server = httptest.NewServer(broker)
 }
 
 func TestCreateAndJoinChannel(t *testing.T) {
@@ -151,6 +178,44 @@ func TestAppendAndPollBothDirections(t *testing.T) {
 	}
 }
 
+func TestDuplicateMessageRejected(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	joined := joinWithPairingToken(t, env, created)
+
+	req := AppendMessageRequest{
+		MessageID:  "msg_duplicate",
+		Sender:     roleBrowser,
+		Recipient:  roleMinter,
+		Algorithm:  algorithm,
+		AAD:        "aad",
+		Nonce:      "nonce",
+		Ciphertext: "ciphertext",
+	}
+	first := appendMessage(t, env, created.ChannelID, joined.BrowserToken, req)
+	if first.Seq != 1 {
+		t.Fatalf("first append seq = %d, want 1", first.Seq)
+	}
+
+	status, errCode := postJSON(t, env.server.URL+"/v1/channels/"+created.ChannelID+"/messages", joined.BrowserToken, req, nil)
+	if status != http.StatusConflict || errCode != "duplicate_message" {
+		t.Fatalf("duplicate append status/error = %d/%q, want 409/duplicate_message", status, errCode)
+	}
+
+	minterAppend := appendMessage(t, env, created.ChannelID, created.MinterToken, AppendMessageRequest{
+		MessageID:  "msg_duplicate",
+		Sender:     roleMinter,
+		Recipient:  roleBrowser,
+		Algorithm:  algorithm,
+		AAD:        "aad-minter",
+		Nonce:      "nonce-minter",
+		Ciphertext: "ciphertext-minter",
+	})
+	if minterAppend.Seq != 2 {
+		t.Fatalf("opposite sender duplicate messageId seq = %d, want 2", minterAppend.Seq)
+	}
+}
+
 func TestTTLOnlyExtendsOnAcceptedMessages(t *testing.T) {
 	env := newTestEnv(t)
 	created := createChannel(t, env, false)
@@ -181,6 +246,38 @@ func TestTTLOnlyExtendsOnAcceptedMessages(t *testing.T) {
 	pollResponse := pollMessages(t, env, created.ChannelID, created.MinterToken, 0)
 	if pollResponse.ExpiresAt != appendResponse.ExpiresAt {
 		t.Fatalf("poll extended TTL: got %s, want %s", pollResponse.ExpiresAt, appendResponse.ExpiresAt)
+	}
+}
+
+func TestPollExpiryPersistsAfterRestart(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	joined := joinWithPairingToken(t, env, created)
+	*env.clock = env.clock.Add(16 * time.Second)
+
+	status, errCode := getJSON(t, env.server.URL+"/v1/channels/"+created.ChannelID+"/messages?afterSeq=0", created.MinterToken, nil)
+	if status != http.StatusGone || errCode != "expired" {
+		t.Fatalf("expired poll status/error = %d/%q, want 410/expired", status, errCode)
+	}
+	if got := channelStatus(t, env, created.ChannelID); got != statusExpired {
+		t.Fatalf("channel status after expired poll = %q, want %q", got, statusExpired)
+	}
+
+	env.restart(t)
+	if got := channelStatus(t, env, created.ChannelID); got != statusExpired {
+		t.Fatalf("channel status after restart = %q, want %q", got, statusExpired)
+	}
+	status, errCode = postJSON(t, env.server.URL+"/v1/channels/"+created.ChannelID+"/messages", joined.BrowserToken, AppendMessageRequest{
+		MessageID:  "msg_after_expiry",
+		Sender:     roleBrowser,
+		Recipient:  roleMinter,
+		Algorithm:  algorithm,
+		AAD:        "aad",
+		Nonce:      "nonce",
+		Ciphertext: "ciphertext",
+	}, nil)
+	if status != http.StatusGone || errCode != "expired" {
+		t.Fatalf("append after persisted expiry status/error = %d/%q, want 410/expired", status, errCode)
 	}
 }
 
@@ -223,6 +320,27 @@ func TestOversizedPayloadRejected(t *testing.T) {
 	}
 }
 
+func TestShortCodeResolveAggregateRateLimitPersistsAcrossRestart(t *testing.T) {
+	env := newTestEnv(t)
+	for i := 0; i < shortCodeAttemptLimit; i++ {
+		code := fmt.Sprintf("%06d", i)
+		status, errCode := postJSON(t, env.server.URL+"/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+			ShortCode: code,
+		}, nil)
+		if status != http.StatusNotFound || errCode != "not_found" {
+			t.Fatalf("resolve miss %d status/error = %d/%q, want 404/not_found", i, status, errCode)
+		}
+	}
+
+	env.restart(t)
+	status, errCode := postJSON(t, env.server.URL+"/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+		ShortCode: "999999",
+	}, nil)
+	if status != http.StatusTooManyRequests || errCode != "rate_limited" {
+		t.Fatalf("aggregate limited resolve status/error = %d/%q, want 429/rate_limited", status, errCode)
+	}
+}
+
 func TestShortCodeResolve(t *testing.T) {
 	env := newTestEnv(t)
 	created := createChannel(t, env, true)
@@ -239,6 +357,64 @@ func TestShortCodeResolve(t *testing.T) {
 	}
 	if !bytes.Equal(resolved.MinterPublicKeyJWK, testPublicJWK) {
 		t.Fatalf("resolved public key mismatch: %s", resolved.MinterPublicKeyJWK)
+	}
+}
+
+func TestCleanupRemovesExpiredChannelAfterRestart(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, true)
+	*env.clock = env.clock.Add(16 * time.Second)
+	env.restart(t)
+
+	if err := env.broker.cleanupExpiredChannels(*env.clock, cleanupBatchLimit); err != nil {
+		t.Fatalf("cleanup expired channels: %v", err)
+	}
+	if channelExists(t, env, created.ChannelID) {
+		t.Fatalf("expired channel %s still exists after cleanup", created.ChannelID)
+	}
+
+	status, errCode := postJSON(t, env.server.URL+"/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+		ShortCode: created.ShortCode,
+	}, nil)
+	if status != http.StatusNotFound || errCode != "not_found" {
+		t.Fatalf("resolve cleaned short code status/error = %d/%q, want 404/not_found", status, errCode)
+	}
+}
+
+func TestCleanupIgnoresStaleExpiryIndexUntilCurrentExpiry(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	joined := joinWithPairingToken(t, env, created)
+
+	*env.clock = env.clock.Add(5 * time.Second)
+	appendResponse := appendMessage(t, env, created.ChannelID, joined.BrowserToken, AppendMessageRequest{
+		MessageID:  "msg_extend_expiry",
+		Sender:     roleBrowser,
+		Recipient:  roleMinter,
+		Algorithm:  algorithm,
+		AAD:        "aad",
+		Nonce:      "nonce",
+		Ciphertext: "ciphertext",
+	})
+
+	*env.clock = env.clock.Add(11 * time.Second)
+	if err := env.broker.cleanupExpiredChannels(*env.clock, cleanupBatchLimit); err != nil {
+		t.Fatalf("cleanup stale expiry: %v", err)
+	}
+	if !channelExists(t, env, created.ChannelID) {
+		t.Fatalf("channel was removed at stale initial expiry")
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339Nano, appendResponse.ExpiresAt)
+	if err != nil {
+		t.Fatalf("parse append expiresAt: %v", err)
+	}
+	*env.clock = expiresAt.Add(time.Second)
+	if err := env.broker.cleanupExpiredChannels(*env.clock, cleanupBatchLimit); err != nil {
+		t.Fatalf("cleanup current expiry: %v", err)
+	}
+	if channelExists(t, env, created.ChannelID) {
+		t.Fatalf("channel still exists after current expiry cleanup")
 	}
 }
 
@@ -321,6 +497,41 @@ func pollMessages(t *testing.T, env *testEnv, channelID, token string, afterSeq 
 	return response
 }
 
+func channelStatus(t *testing.T, env *testEnv, channelID string) string {
+	t.Helper()
+	var status string
+	err := env.broker.db.View(func(tx *bolt.Tx) error {
+		_, metaBucket, _, _, ok := channelBuckets(tx, channelID)
+		if !ok {
+			return fmt.Errorf("channel %s not found", channelID)
+		}
+		record, err := loadChannelRecord(metaBucket)
+		if err != nil {
+			return err
+		}
+		status = record.Status
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read channel status: %v", err)
+	}
+	return status
+}
+
+func channelExists(t *testing.T, env *testEnv, channelID string) bool {
+	t.Helper()
+	var exists bool
+	err := env.broker.db.View(func(tx *bolt.Tx) error {
+		channels := tx.Bucket([]byte(bucketChannels))
+		exists = channels != nil && channels.Bucket([]byte(channelID)) != nil
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read channel existence: %v", err)
+	}
+	return exists
+}
+
 func postJSON(t *testing.T, url, token string, body any, out any) (int, string) {
 	t.Helper()
 	raw, err := json.Marshal(body)
@@ -332,6 +543,18 @@ func postJSON(t *testing.T, url, token string, body any, out any) (int, string) 
 		t.Fatalf("new post request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return doJSON(t, req, out)
+}
+
+func getJSON(t *testing.T, url, token string, out any) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("new get request: %v", err)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

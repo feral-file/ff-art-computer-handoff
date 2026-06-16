@@ -1,4 +1,4 @@
-import { type JsonValue } from "./canonicalJson.js";
+import { canonicalJson, type JsonValue } from "./canonicalJson.js";
 import {
   decryptChannelMessage,
   encryptChannelMessage,
@@ -117,6 +117,10 @@ function requiredJwk(record: Record<string, unknown>, key: string, errorMessage:
     throw new Error(errorMessage);
   }
   return value;
+}
+
+function publicJwkMatches(left: JsonWebKey, right: JsonWebKey): boolean {
+  return canonicalJson(left as JsonValue) === canonicalJson(right as JsonValue);
 }
 
 async function jsonResponse(response: Response, errorPrefix: string): Promise<unknown> {
@@ -418,6 +422,9 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
   const keyPair = await generateBrowserKeyPair();
   const browserPublicKeyJwk = await exportPublicJwk(keyPair.publicKey);
   const join = await joinChannel({ fetcher, pairing, browserPublicKeyJwk, origin, browserInfo });
+  if (!publicJwkMatches(join.minterPublicKeyJwk, pairing.minterPublicKeyJwk)) {
+    throw new Error("channel join minter key mismatch");
+  }
 
   const requestMessageId = randomMessageId();
   const mintRequestPlaintext: JsonValue = {
@@ -445,7 +452,16 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
   const deadline = Date.now() + (options.maxWaitMs ?? 300_000);
   let afterSeq = Math.max(join.nextSeq, sent.seq);
   while (Date.now() <= deadline) {
-    const poll = await pollMessages({ fetcher, pairing, browserToken: join.browserToken, afterSeq });
+    let poll: PollMessagesResponse;
+    try {
+      poll = await pollMessages({ fetcher, pairing, browserToken: join.browserToken, afterSeq });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        await sleep(options.pollIntervalMs ?? 5000);
+        continue;
+      }
+      throw error;
+    }
     for (const message of poll.messages) {
       afterSeq = Math.max(afterSeq, message.seq);
       if (message.sender !== "minter" || message.recipient !== "browser") {

@@ -47,6 +47,7 @@ const (
 	shortCodeAttemptLimit = 8
 	shortCodeWindow       = time.Minute
 	shortCodeLockout      = 5 * time.Minute
+	cleanupBatchLimit     = 100
 
 	statusWaiting = "waiting"
 	statusPaired  = "paired"
@@ -323,6 +324,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *Broker) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
+	if err := b.cleanupExpiredChannels(b.now().UTC(), cleanupBatchLimit); err != nil {
+		writeError(w, http.StatusInternalServerError, "invalid_request")
+		return
+	}
+
 	var req CreateChannelRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request")
@@ -593,6 +599,13 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 	var code string
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		attemptKey := shortCodeResolveAttemptKey(shortCodeHash)
+		aggregateAttemptKey := shortCodeResolveAggregateAttemptKey()
+		if limited, err := rateLimitAttempt(tx, aggregateAttemptKey, now); err != nil {
+			return err
+		} else if limited {
+			status, code = http.StatusTooManyRequests, "rate_limited"
+			return nil
+		}
 		if limited, err := rateLimitAttempt(tx, attemptKey, now); err != nil {
 			return err
 		} else if limited {
@@ -601,6 +614,9 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 		}
 		channelIDBytes := tx.Bucket([]byte(bucketShortCodes)).Get([]byte(shortCodeHash))
 		if channelIDBytes == nil {
+			if err := recordAttemptMiss(tx, aggregateAttemptKey, now); err != nil {
+				return err
+			}
 			if err := recordAttemptMiss(tx, attemptKey, now); err != nil {
 				return err
 			}
@@ -711,6 +727,14 @@ func (b *Broker) handleAppendMessage(w http.ResponseWriter, r *http.Request, cha
 			status, code = http.StatusUnauthorized, "unauthorized"
 			return nil
 		}
+		duplicate, err := duplicateMessageExists(messagesBucket, req.Sender, req.MessageID)
+		if err != nil {
+			return err
+		}
+		if duplicate {
+			status, code = http.StatusConflict, "duplicate_message"
+			return nil
+		}
 		seq, err := messagesBucket.NextSequence()
 		if err != nil {
 			return err
@@ -775,7 +799,7 @@ func (b *Broker) handlePollMessages(w http.ResponseWriter, r *http.Request, chan
 	var response PollMessagesResponse
 	var status int
 	var code string
-	err = b.db.View(func(tx *bolt.Tx) error {
+	err = b.db.Update(func(tx *bolt.Tx) error {
 		_, metaBucket, participantsBucket, messagesBucket, ok := channelBuckets(tx, channelID)
 		if !ok {
 			status, code = http.StatusNotFound, "not_found"
@@ -794,7 +818,11 @@ func (b *Broker) handlePollMessages(w http.ResponseWriter, r *http.Request, chan
 			status, code = http.StatusConflict, "closed"
 			return nil
 		}
-		if isExpired(record, now) {
+		expired, err := markExpiredIfNeeded(tx, metaBucket, &record, now)
+		if err != nil {
+			return err
+		}
+		if expired {
 			status, code = http.StatusGone, "expired"
 			return nil
 		}
@@ -862,7 +890,7 @@ func (b *Broker) handleCloseChannel(w http.ResponseWriter, r *http.Request, chan
 				return err
 			}
 		}
-		return nil
+		return tx.Bucket([]byte(bucketCleanupByExpiry)).Put(cleanupKey(now, channelID), nil)
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "invalid_request")
@@ -875,6 +903,74 @@ func (b *Broker) handleCloseChannel(w http.ResponseWriter, r *http.Request, chan
 	writeJSON(w, http.StatusOK, struct {
 		Status string `json:"status"`
 	}{Status: statusClosed})
+}
+
+func (b *Broker) cleanupExpiredChannels(now time.Time, limit int) error {
+	if limit <= 0 {
+		return nil
+	}
+	return b.db.Update(func(tx *bolt.Tx) error {
+		cleanup := tx.Bucket([]byte(bucketCleanupByExpiry))
+		channels := tx.Bucket([]byte(bucketChannels))
+		if cleanup == nil || channels == nil {
+			return nil
+		}
+		cutoff := uint64(now.UnixMilli())
+		cursor := cleanup.Cursor()
+		processed := 0
+		for key, _ := cursor.First(); key != nil && processed < limit; key, _ = cursor.First() {
+			expiryMillis, channelID, ok := parseCleanupKey(key)
+			if !ok {
+				if err := cleanup.Delete(key); err != nil {
+					return err
+				}
+				processed++
+				continue
+			}
+			if expiryMillis > cutoff {
+				return nil
+			}
+			if err := cleanup.Delete(key); err != nil {
+				return err
+			}
+			channel := channels.Bucket([]byte(channelID))
+			if channel == nil {
+				processed++
+				continue
+			}
+			meta := channel.Bucket([]byte(channelBucketMeta))
+			if meta == nil {
+				if err := channels.DeleteBucket([]byte(channelID)); err != nil {
+					return err
+				}
+				processed++
+				continue
+			}
+			record, err := loadChannelRecord(meta)
+			if err != nil {
+				return err
+			}
+			if shouldDeleteChannel(record, now) {
+				if err := deleteChannelIndexes(tx, record); err != nil {
+					return err
+				}
+				if err := channels.DeleteBucket([]byte(channelID)); err != nil {
+					return err
+				}
+				processed++
+				continue
+			}
+			currentExpiresAt, err := time.Parse(time.RFC3339Nano, record.ExpiresAt)
+			if err != nil {
+				return err
+			}
+			if err := cleanup.Put(cleanupKey(currentExpiresAt, channelID), nil); err != nil {
+				return err
+			}
+			processed++
+		}
+		return nil
+	})
 }
 
 func (b *Broker) baseURL(r *http.Request) string {
@@ -1158,6 +1254,20 @@ func joinCredentialMatches(tx *bolt.Tx, record ChannelRecord, channelID string, 
 	return string(indexed) == channelID && constantTimeEqual(record.ShortCodeHash, shortCodeHash)
 }
 
+func duplicateMessageExists(messages *bolt.Bucket, sender, messageID string) (bool, error) {
+	cursor := messages.Cursor()
+	for _, value := cursor.First(); value != nil; _, value = cursor.Next() {
+		var msg MessageRecord
+		if err := json.Unmarshal(value, &msg); err != nil {
+			return false, err
+		}
+		if msg.Sender == sender && msg.MessageID == messageID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func markExpiredIfNeeded(tx *bolt.Tx, meta *bolt.Bucket, record *ChannelRecord, now time.Time) (bool, error) {
 	if !isExpired(*record, now) || record.Status == statusClosed || record.Status == statusExpired {
 		return record.Status == statusExpired, nil
@@ -1175,6 +1285,28 @@ func markExpiredIfNeeded(tx *bolt.Tx, meta *bolt.Bucket, record *ChannelRecord, 
 		}
 	}
 	return true, nil
+}
+
+func deleteChannelIndexes(tx *bolt.Tx, record ChannelRecord) error {
+	if err := tx.Bucket([]byte(bucketPairingTokens)).Delete([]byte(record.PairingTokenHash)); err != nil {
+		return err
+	}
+	if record.ShortCodeHash != "" {
+		if err := tx.Bucket([]byte(bucketShortCodes)).Delete([]byte(record.ShortCodeHash)); err != nil {
+			return err
+		}
+	}
+	if err := tx.Bucket([]byte(bucketShortCodeAttempts)).Delete([]byte(shortCodeJoinAttemptKey(record.ChannelID))); err != nil {
+		return err
+	}
+	return nil
+}
+
+func shouldDeleteChannel(record ChannelRecord, now time.Time) bool {
+	if record.Status == statusClosed || record.Status == statusExpired {
+		return true
+	}
+	return isExpired(record, now)
 }
 
 func isExpired(record ChannelRecord, now time.Time) bool {
@@ -1232,6 +1364,10 @@ func shortCodeResolveAttemptKey(shortCodeHash string) string {
 	return "code:" + shortCodeHash
 }
 
+func shortCodeResolveAggregateAttemptKey() string {
+	return "resolve:aggregate"
+}
+
 func shortCodeJoinAttemptKey(channelID string) string {
 	return "channel:" + channelID
 }
@@ -1242,6 +1378,13 @@ func cleanupKey(expiresAt time.Time, channelID string) []byte {
 	key[8] = 0
 	copy(key[9:], channelID)
 	return key
+}
+
+func parseCleanupKey(key []byte) (uint64, string, bool) {
+	if len(key) <= 9 || key[8] != 0 {
+		return 0, "", false
+	}
+	return binary.BigEndian.Uint64(key[:8]), string(key[9:]), true
 }
 
 func uint64Key(value uint64) []byte {
