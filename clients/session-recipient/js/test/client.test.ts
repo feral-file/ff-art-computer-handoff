@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ephemeralBrowserSessionStorageKey,
   readStoredEphemeralBrowserSession,
@@ -12,6 +12,25 @@ type RequestRecord = {
   url: string;
   init: RequestInit | undefined;
 };
+
+const testOrigin = "https://nft.example";
+let previousLocationDescriptor: PropertyDescriptor | undefined;
+
+beforeEach(() => {
+  previousLocationDescriptor = Object.getOwnPropertyDescriptor(globalThis, "location");
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { origin: testOrigin }
+  });
+});
+
+afterEach(() => {
+  if (previousLocationDescriptor === undefined) {
+    Reflect.deleteProperty(globalThis, "location");
+    return;
+  }
+  Object.defineProperty(globalThis, "location", previousLocationDescriptor);
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -96,7 +115,7 @@ describe("requestEphemeralSession", () => {
       requests.push({ url, init });
       if (url.endsWith("/v1/channels/ch_123/join")) {
         const body = requestBody(init);
-        expect(body["origin"]).toBe("https://nft.example");
+        expect(body["origin"]).toBe(testOrigin);
         expect(body["pairingToken"]).toBe("pt_123");
         browserPublicKeyJwk = body["browserPublicKeyJwk"] as JsonWebKey;
         return jsonResponse({
@@ -144,7 +163,6 @@ describe("requestEphemeralSession", () => {
           minterPublicKeyJwk
         }
       },
-      origin: "https://nft.example",
       browserInfo: { name: "Test Browser" },
       storage: { storage },
       pollIntervalMs: 1,
@@ -211,7 +229,6 @@ describe("requestEphemeralSession", () => {
     });
     const session = await requestEphemeralSession({
       pairing: { brokerBaseUrl: "https://pairing.example", shortCode: "123456" },
-      origin: "https://nft.example",
       storage: false,
       pollIntervalMs: 1,
       fetchImpl
@@ -253,7 +270,6 @@ describe("requestEphemeralSession", () => {
           minterPublicKeyJwk: pairingMinterPublicKeyJwk
         }
       },
-      origin: "https://nft.example",
       storage: false,
       pollIntervalMs: 1,
       fetchImpl
@@ -328,7 +344,6 @@ describe("requestEphemeralSession", () => {
           minterPublicKeyJwk
         }
       },
-      origin: "https://nft.example",
       storage: false,
       pollIntervalMs: 1,
       fetchImpl

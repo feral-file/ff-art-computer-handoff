@@ -166,7 +166,6 @@
         setMessage("Waiting for encrypted approval result.");
         const session = await requestEphemeralSession({
           pairing: pairingInput(),
-          origin: window.location.origin,
           browserInfo: {
             name: navigator.userAgent.includes("Chrome") ? "Chrome" : "Browser",
             userAgent: navigator.userAgent,

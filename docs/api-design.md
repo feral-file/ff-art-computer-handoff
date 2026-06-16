@@ -275,7 +275,6 @@ type PairingInput =
 
 type RequestEphemeralSessionOptions = {
   pairing: PairingInput;
-  origin?: string;
   browserInfo?: {
     name?: string;
     userAgent?: string;
@@ -298,6 +297,7 @@ async function requestEphemeralSession(
 Required behavior:
 
 - Generate a per-channel browser ECDH key pair.
+- Derive requester origin from `window.location.origin`; do not accept caller-controlled origin in the public browser API.
 - Join the broker channel with the QR pairing token or short code.
 - Encrypt the mint request before sending it.
 - Poll only for encrypted messages addressed to `browser`.

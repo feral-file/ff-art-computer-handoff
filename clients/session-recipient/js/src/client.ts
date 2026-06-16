@@ -39,7 +39,6 @@ export type TokenStorageOptions =
 
 export type RequestEphemeralSessionOptions = {
   pairing: PairingInput;
-  origin?: string;
   browserInfo?: BrowserInfo;
   storage?: TokenStorageOptions;
   pollIntervalMs?: number;
@@ -410,7 +409,7 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
 
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
   const fetcher = options.fetchImpl ?? fetch;
-  const origin = options.origin ?? currentOrigin();
+  const origin = currentOrigin();
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);

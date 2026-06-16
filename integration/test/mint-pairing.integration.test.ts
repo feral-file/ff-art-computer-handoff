@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   decryptChannelMessage,
   encryptChannelMessage,
@@ -56,6 +56,8 @@ const imageTag = `mint-pairing-broker-integration:${String(process.pid)}`;
 const repoRoot = resolve("..");
 const tempDirs: string[] = [];
 const containers: string[] = [];
+const testOrigin = "https://nft.example";
+let previousLocationDescriptor: PropertyDescriptor | undefined;
 
 function docker(args: string[]): string {
   return execFileSync("docker", args, {
@@ -250,7 +252,20 @@ beforeAll(() => {
   docker(["build", "-f", "server/Dockerfile", "-t", imageTag, "server"]);
 }, 120_000);
 
+beforeEach(() => {
+  previousLocationDescriptor = Object.getOwnPropertyDescriptor(globalThis, "location");
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { origin: testOrigin }
+  });
+});
+
 afterEach(() => {
+  if (previousLocationDescriptor === undefined) {
+    Reflect.deleteProperty(globalThis, "location");
+  } else {
+    Object.defineProperty(globalThis, "location", previousLocationDescriptor);
+  }
   for (const containerId of [...containers]) {
     stopBroker(containerId);
   }
@@ -279,7 +294,6 @@ describe("mint pairing integration", () => {
 
     const browserSessionPromise = requestEphemeralSession({
       pairing: { qrPayload: qrPayloadForBroker(created.qrPayload, broker.baseUrl) },
-      origin: "https://nft.example",
       browserInfo: { name: "Integration Browser" },
       storage: false,
       pollIntervalMs: 50,
@@ -296,7 +310,7 @@ describe("mint pairing integration", () => {
       v: 1,
       type: "mint_request",
       channelId: created.channelId,
-      origin: "https://nft.example"
+      origin: testOrigin
     });
 
     const brokerPort = new URL(broker.baseUrl).port;
