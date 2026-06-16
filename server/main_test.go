@@ -320,6 +320,158 @@ func TestOversizedPayloadRejected(t *testing.T) {
 	}
 }
 
+func TestMalformedCreateRequestsRejected(t *testing.T) {
+	env := newTestEnv(t)
+	validPublicKey := string(testPublicJWK)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "unknown field",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":` + validPublicKey + `,"idleTtlSeconds":15,"unexpected":true}`,
+		},
+		{
+			name: "bad json",
+			body: `{"algorithm":`,
+		},
+		{
+			name: "trailing json",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":` + validPublicKey + `,"idleTtlSeconds":15}{}`,
+		},
+		{
+			name: "ttl below minimum",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":` + validPublicKey + `,"idleTtlSeconds":14}`,
+		},
+		{
+			name: "ttl above maximum",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":` + validPublicKey + `,"idleTtlSeconds":301}`,
+		},
+		{
+			name: "public key must be object",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":[],"idleTtlSeconds":15}`,
+		},
+		{
+			name: "public key object must contain valid json",
+			body: `{"algorithm":"` + algorithm + `","minterPublicKeyJwk":{"kty":},"idleTtlSeconds":15}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, errCode := postRawJSON(t, env.server.URL+"/v1/channels", "", tt.body, nil)
+			if status != http.StatusBadRequest || errCode != "invalid_request" {
+				t.Fatalf("status/error = %d/%q, want 400/invalid_request", status, errCode)
+			}
+		})
+	}
+}
+
+func TestMalformedJoinRequestsRejected(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, true)
+	validPublicKey := string(testPublicJWK)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "unknown field",
+			body: `{"pairingToken":"` + created.PairingToken + `","browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example","unexpected":true}`,
+		},
+		{
+			name: "browser public key must be object",
+			body: `{"pairingToken":"` + created.PairingToken + `","browserPublicKeyJwk":[],"origin":"https://nft.example"}`,
+		},
+		{
+			name: "browser info must be object",
+			body: `{"pairingToken":"` + created.PairingToken + `","browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example","browserInfo":[]}`,
+		},
+		{
+			name: "pairing token and short code are mutually exclusive",
+			body: `{"pairingToken":"` + created.PairingToken + `","shortCode":"` + created.ShortCode + `","browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example"}`,
+		},
+		{
+			name: "credential required",
+			body: `{"browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example"}`,
+		},
+		{
+			name: "bad pairing token shape",
+			body: `{"pairingToken":"not-a-pairing-token","browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example"}`,
+		},
+		{
+			name: "bad short code shape",
+			body: `{"shortCode":"12AB56","browserPublicKeyJwk":` + validPublicKey + `,"origin":"https://nft.example"}`,
+		},
+		{
+			name: "origin must be absolute",
+			body: `{"pairingToken":"` + created.PairingToken + `","browserPublicKeyJwk":` + validPublicKey + `,"origin":"nft.example"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, errCode := postRawJSON(t, env.server.URL+"/v1/channels/"+created.ChannelID+"/join", "", tt.body, nil)
+			if status != http.StatusBadRequest || errCode != "invalid_request" {
+				t.Fatalf("status/error = %d/%q, want 400/invalid_request", status, errCode)
+			}
+		})
+	}
+}
+
+func TestMalformedAppendMessageRequestsRejected(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	joined := joinWithPairingToken(t, env, created)
+	endpoint := env.server.URL + "/v1/channels/" + created.ChannelID + "/messages"
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "unknown field",
+			body: `{"messageId":"msg_unknown","sender":"browser","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext","unexpected":true}`,
+		},
+		{
+			name: "invalid sender role",
+			body: `{"messageId":"msg_sender","sender":"controller","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext"}`,
+		},
+		{
+			name: "invalid recipient role",
+			body: `{"messageId":"msg_recipient","sender":"browser","recipient":"controller","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext"}`,
+		},
+		{
+			name: "sender and recipient must differ",
+			body: `{"messageId":"msg_same_role","sender":"browser","recipient":"browser","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext"}`,
+		},
+		{
+			name: "message id required",
+			body: `{"sender":"browser","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext"}`,
+		},
+		{
+			name: "nonce required",
+			body: `{"messageId":"msg_nonce","sender":"browser","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","ciphertext":"ciphertext"}`,
+		},
+		{
+			name: "ciphertext required",
+			body: `{"messageId":"msg_ciphertext","sender":"browser","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce"}`,
+		},
+		{
+			name: "sender public key must be object",
+			body: `{"messageId":"msg_sender_key","sender":"browser","recipient":"minter","algorithm":"` + algorithm + `","aad":"aad","nonce":"nonce","ciphertext":"ciphertext","senderPublicKeyJwk":[]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, errCode := postRawJSON(t, endpoint, joined.BrowserToken, tt.body, nil)
+			if status != http.StatusBadRequest || errCode != "invalid_request" {
+				t.Fatalf("status/error = %d/%q, want 400/invalid_request", status, errCode)
+			}
+		})
+	}
+}
+
 func TestShortCodeResolveAggregateRateLimitPersistsAcrossRestart(t *testing.T) {
 	env := newTestEnv(t)
 	for i := 0; i < shortCodeAttemptLimit; i++ {
@@ -538,7 +690,12 @@ func postJSON(t *testing.T, url, token string, body any, out any) (int, string) 
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
+	return postRawJSON(t, url, token, string(raw), out)
+}
+
+func postRawJSON(t *testing.T, url, token, body string, out any) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new post request: %v", err)
 	}

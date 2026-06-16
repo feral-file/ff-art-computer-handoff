@@ -67,6 +67,8 @@ jobs:
         working-directory: clients/session-recipient/js
       - run: npm ci
         working-directory: integration
+      - run: npm run sample:build
+        working-directory: integration
       - run: npm run lint
         working-directory: integration
       - run: npm run typecheck
