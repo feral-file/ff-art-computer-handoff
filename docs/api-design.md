@@ -20,12 +20,14 @@ The broker API has only two data-plane roles:
   on the FF1 frontend, sends an encrypted mint request, and receives an encrypted
   result.
 - `minter`: creates the channel, provides the QR/deep-link or short-code payload
-  to the FF1 frontend, receives encrypted browser messages, asks `ff-controller`
-  for approval through `ff-relayer`, mints through `ff-relayer` if approved, and
-  sends an encrypted result.
+  to `feral-controld`, receives encrypted browser messages, decrypts and
+  validates requester binding, and sends an encrypted result supplied by
+  `feral-controld`.
 
 `ff-controller`, the FF1 frontend, and `ff-relayer` are integration points around
-the two libraries, not additional broker API parties.
+the two libraries, not additional broker API parties. `feral-controld`, not the
+Go minter library, owns approval orchestration and `ff-relayer` session
+creation.
 
 ## Shared Crypto Contract
 
@@ -52,6 +54,12 @@ Each encrypted message should bind stable public fields as AAD:
   "algorithm": "P256-HKDF-SHA256-AES-256-GCM"
 }
 ```
+
+For messages encrypted before the broker has assigned a sequence number, clients
+use `seq: 0` in the AAD and validate the broker-assigned `seq` from the stored
+envelope separately. Browser-to-minter envelopes must also include the sender's
+P-256 public JWK as public metadata so the minter can derive the ECDH shared
+secret; this public key is not application plaintext.
 
 The encrypted plaintext may contain message types such as:
 
@@ -189,6 +197,7 @@ Request:
   "sender": "browser",
   "recipient": "minter",
   "algorithm": "P256-HKDF-SHA256-AES-256-GCM",
+  "senderPublicKeyJwk": {},
   "aad": "...",
   "nonce": "...",
   "ciphertext": "..."
@@ -230,6 +239,7 @@ Response:
       "sender": "minter",
       "recipient": "browser",
       "algorithm": "P256-HKDF-SHA256-AES-256-GCM",
+      "senderPublicKeyJwk": {},
       "aad": "...",
       "nonce": "...",
       "ciphertext": "..."
@@ -267,7 +277,6 @@ type PairingInput =
 
 type RequestEphemeralSessionOptions = {
   pairing: PairingInput;
-  origin?: string;
   browserInfo?: {
     name?: string;
     userAgent?: string;
@@ -290,6 +299,7 @@ async function requestEphemeralSession(
 Required behavior:
 
 - Generate a per-channel browser ECDH key pair.
+- Derive requester origin from `window.location.origin`; do not accept caller-controlled origin in the public browser API.
 - Join the broker channel with the QR pairing token or short code.
 - Encrypt the mint request before sending it.
 - Poll only for encrypted messages addressed to `browser`.
@@ -308,7 +318,6 @@ Example Go shape:
 type StartChannelOptions struct {
     BrokerBaseURL string
     IdleTTL       time.Duration
-    TopicID       string
 }
 
 type PairingDisplay struct {
@@ -337,10 +346,9 @@ Expected library operations:
 - Let the FF1 frontend render the QR/deep-link payload or short code.
 - Poll broker messages for encrypted browser requests.
 - Decrypt and validate requester origin, public key, and channel binding.
-- Ask `ff-controller` for approval through `ff-relayer`.
-- On approval, call `ff-relayer` `POST /api/ephemeral-sessions?topicID=...`.
+- Accept a host-provided success or rejection payload from `feral-controld`.
 - Encrypt success or rejection back to the browser over the broker channel.
-- Close the channel after terminal success or rejection.
+- Close the channel after terminal success or rejection delivery, timeout, cancellation, or local cleanup policy permits removal. The minter must not close immediately after sending a terminal result if that prevents the browser from polling the encrypted message.
 
 ## Error Model
 
@@ -364,5 +372,7 @@ except for coarse transport state such as a closed channel.
 - The broker does not call `ff-controller`.
 - The broker does not parse DP1 feeds or playlist content.
 - The browser library does not receive API keys or topic-management authority.
+- The mint library does not call `ff-relayer` or `ff-controller`; `feral-controld`
+  performs those integrations and passes final result payloads into the library.
 - The mint library does not send raw browser session tokens outside the E2EE
   broker response to the browser.

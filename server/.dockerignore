@@ -1,0 +1,5 @@
+.git
+mint-pairing.db
+*.db
+*.db-*
+node_modules

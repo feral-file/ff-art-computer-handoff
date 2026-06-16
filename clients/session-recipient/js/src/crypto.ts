@@ -1,10 +1,39 @@
 import { canonicalJson, type JsonValue } from "./canonicalJson.js";
-import { aadFields, type HandoffPayload } from "./handoffPayload.js";
+
+export const mintPairingAlgorithm = "P256-HKDF-SHA256-AES-256-GCM" as const;
 
 const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+export type MessageRole = "browser" | "minter";
+
+export type MessageAad = {
+  v: 1;
+  channelId: string;
+  messageId: string;
+  seq: number;
+  sender: MessageRole;
+  recipient: MessageRole;
+  algorithm: typeof mintPairingAlgorithm;
+};
+
+export type EncryptedChannelMessage = {
+  messageId: string;
+  sender: MessageRole;
+  recipient: MessageRole;
+  algorithm: typeof mintPairingAlgorithm;
+  aad: string;
+  nonce: string;
+  ciphertext: string;
+  senderPublicKeyJwk?: JsonWebKey;
+};
 
 function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function aadBytes(aad: MessageAad): Uint8Array {
+  return textEncoder.encode(canonicalJson(aad));
 }
 
 export function getCrypto(): Crypto {
@@ -29,7 +58,7 @@ export async function sha256(value: string): Promise<Uint8Array> {
   return new Uint8Array(await getCrypto().subtle.digest("SHA-256", textEncoder.encode(value)));
 }
 
-export async function generatePublisherKeyPair(): Promise<CryptoKeyPair> {
+export async function generateBrowserKeyPair(): Promise<CryptoKeyPair> {
   return getCrypto().subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
 }
 
@@ -41,55 +70,127 @@ export async function importPeerPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
   return getCrypto().subtle.importKey("jwk", jwk, { name: "ECDH", namedCurve: "P-256" }, false, []);
 }
 
-export function aadBytes(payload: HandoffPayload): Uint8Array {
-  return textEncoder.encode(canonicalJson(aadFields(payload)));
+export function messageAad(input: {
+  channelId: string;
+  messageId: string;
+  seq: number;
+  sender: MessageRole;
+  recipient: MessageRole;
+}): MessageAad {
+  return {
+    v: 1,
+    channelId: input.channelId,
+    messageId: input.messageId,
+    seq: input.seq,
+    sender: input.sender,
+    recipient: input.recipient,
+    algorithm: mintPairingAlgorithm
+  };
 }
 
-export function hkdfSalt(payload: HandoffPayload): Promise<Uint8Array> {
-  return sha256(canonicalJson(aadFields(payload)));
+export function messageAadBase64Url(aad: MessageAad): string {
+  return base64UrlEncode(aadBytes(aad));
 }
 
-export async function deriveAesKey(privateKey: CryptoKey, peerPublicJwk: JsonWebKey, payload: HandoffPayload): Promise<CryptoKey> {
-  const peerPublicKey = await importPeerPublicKey(peerPublicJwk);
-  const sharedBits = await getCrypto().subtle.deriveBits({ name: "ECDH", public: peerPublicKey }, privateKey, 256);
+async function deriveAesKey(input: {
+  privateKey: CryptoKey;
+  peerPublicJwk: JsonWebKey;
+  channelId: string;
+}): Promise<CryptoKey> {
+  const peerPublicKey = await importPeerPublicKey(input.peerPublicJwk);
+  const sharedBits = await getCrypto().subtle.deriveBits({ name: "ECDH", public: peerPublicKey }, input.privateKey, 256);
   const hkdfKey = await getCrypto().subtle.importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+  const salt = await sha256(canonicalJson({ algorithm: mintPairingAlgorithm, channelId: input.channelId, v: 1 }));
   return getCrypto().subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: asArrayBuffer(await hkdfSalt(payload)), info: textEncoder.encode("ff-art-computer-handoff/v1/aes-gcm") },
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: asArrayBuffer(salt),
+      info: textEncoder.encode("ff-mint-pairing/v1/aes-gcm")
+    },
     hkdfKey,
     { name: "AES-GCM", length: 256 },
     false,
-    ["decrypt"]
+    ["encrypt", "decrypt"]
   );
 }
 
-export async function decryptDeliveredPayload(input: {
+export async function encryptChannelMessage(input: {
   privateKey: CryptoKey;
-  handoffPayload: HandoffPayload;
-  devicePublicKeyJwk: JsonWebKey;
-  nonce: string;
+  senderPublicJwk?: JsonWebKey;
+  peerPublicJwk: JsonWebKey;
+  channelId: string;
+  messageId: string;
+  seq: number;
+  sender: MessageRole;
+  recipient: MessageRole;
+  plaintext: JsonValue;
+}): Promise<EncryptedChannelMessage> {
+  const aad = messageAad(input);
+  const aadRaw = aadBytes(aad);
+  const nonce = getCrypto().getRandomValues(new Uint8Array(12));
+  const key = await deriveAesKey({ privateKey: input.privateKey, peerPublicJwk: input.peerPublicJwk, channelId: input.channelId });
+  const ciphertext = new Uint8Array(await getCrypto().subtle.encrypt(
+    { name: "AES-GCM", iv: asArrayBuffer(nonce), additionalData: asArrayBuffer(aadRaw), tagLength: 128 },
+    key,
+    asArrayBuffer(textEncoder.encode(canonicalJson(input.plaintext)))
+  ));
+  return {
+    messageId: input.messageId,
+    sender: input.sender,
+    recipient: input.recipient,
+    algorithm: mintPairingAlgorithm,
+    aad: base64UrlEncode(aadRaw),
+    nonce: base64UrlEncode(nonce),
+    ciphertext: base64UrlEncode(ciphertext),
+    ...(input.senderPublicJwk === undefined ? {} : { senderPublicKeyJwk: input.senderPublicJwk })
+  };
+}
+
+export async function decryptChannelMessage(input: {
+  privateKey: CryptoKey;
+  peerPublicJwk: JsonWebKey;
+  channelId: string;
+  messageId: string;
+  seq: number;
+  sender: MessageRole;
+  recipient: MessageRole;
+  algorithm: string;
   aad: string;
+  nonce: string;
   ciphertext: string;
-}): Promise<Uint8Array> {
-  const expectedAad = aadBytes(input.handoffPayload);
-  const receivedAad = base64UrlDecode(input.aad);
+}): Promise<unknown> {
+  if (input.algorithm !== mintPairingAlgorithm) {
+    throw new Error("encrypted message algorithm mismatch");
+  }
+  const aadRaw = base64UrlDecode(input.aad);
+  const decodedAad = JSON.parse(textDecoder.decode(aadRaw)) as Partial<MessageAad>;
+  if (
+    decodedAad.v !== 1 ||
+    decodedAad.channelId !== input.channelId ||
+    decodedAad.messageId !== input.messageId ||
+    decodedAad.sender !== input.sender ||
+    decodedAad.recipient !== input.recipient ||
+    decodedAad.algorithm !== mintPairingAlgorithm ||
+    (decodedAad.seq !== 0 && decodedAad.seq !== input.seq)
+  ) {
+    throw new Error("encrypted message channel binding mismatch");
+  }
   const nonce = base64UrlDecode(input.nonce);
   if (nonce.byteLength !== 12) {
     throw new Error("AES-GCM nonce must be 12 bytes");
   }
-  if (base64UrlEncode(expectedAad) !== base64UrlEncode(receivedAad)) {
-    throw new Error("AAD does not match handoff session binding");
-  }
-  const key = await deriveAesKey(input.privateKey, input.devicePublicKeyJwk, input.handoffPayload);
+  const key = await deriveAesKey({ privateKey: input.privateKey, peerPublicJwk: input.peerPublicJwk, channelId: input.channelId });
   const plaintext = await getCrypto().subtle.decrypt(
-    { name: "AES-GCM", iv: asArrayBuffer(nonce), additionalData: asArrayBuffer(receivedAad), tagLength: 128 },
+    { name: "AES-GCM", iv: asArrayBuffer(nonce), additionalData: asArrayBuffer(aadRaw), tagLength: 128 },
     key,
     asArrayBuffer(base64UrlDecode(input.ciphertext))
   );
-  return new Uint8Array(plaintext);
+  return JSON.parse(textDecoder.decode(plaintext)) as unknown;
 }
 
-export function aadBase64Url(payload: HandoffPayload): string {
-  return base64UrlEncode(aadBytes(payload));
+export function randomMessageId(): string {
+  return `msg_${base64UrlEncode(getCrypto().getRandomValues(new Uint8Array(16)))}`;
 }
 
 export function jsonBytes(value: JsonValue): Uint8Array {

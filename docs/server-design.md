@@ -36,8 +36,9 @@ The two broker clients are:
 
 The FF1 frontend displays pairing material produced by the minter. It is not a
 broker protocol participant unless a future implementation makes it one.
-`ff-controller` and `ff-relayer` are outside the broker data plane; the minter
-uses them for approval and token minting after it decrypts a browser request.
+`ff-controller` and `ff-relayer` are outside the broker data plane; `feral-controld`
+uses them for approval and token minting after the Go minter library decrypts a
+browser request.
 
 ## QR Pairing Token
 
@@ -298,10 +299,12 @@ message sizes. Logs must not include raw pairing tokens, raw participant tokens,
 short codes, ciphertext bodies, bearer session tokens minted by `ff-relayer`, or
 DP1 playlist content.
 
-## Current Implementation Gap
+## Current Implementation Notes
 
-The current server still exposes the earlier `/v1/sessions` handoff API, stores
-a single one-way payload record, and uses LMDB. The target broker design needs a
-Go server backed by bbolt buckets, a channel-based API, durable bidirectional
-message records, one-time QR pairing tokens, hashed participant tokens, and TTL
-extension from accepted channel messages.
+The current server is a Go Mint Pairing Broker backed by bbolt buckets. It uses
+the channel-based `/v1/channels` API, durable bidirectional encrypted message
+records, one-time QR pairing tokens, hashed participant tokens, persisted
+short-code rate-limit state, and TTL extension from accepted channel messages.
+Downstream `ff-relayer` ephemeral session creation remains outside this broker
+and is intentionally implemented by the minter host integration rather than by
+the broker.

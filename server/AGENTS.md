@@ -7,11 +7,10 @@
 ## Commands
 
 ```sh
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
+test -z "$(gofmt -l .)"
+go vet ./...
+go test ./...
+go build ./...
 ```
 
 ## Rules
@@ -20,4 +19,4 @@ npm run build
 - Do not add in-memory maps for sessions, payloads, token state, expiry state, or test shortcuts.
 - Do not log bearer tokens, raw session tokens, or playlist content.
 - Do not turn this service into a DP1 playlist proxy.
-- Keep TypeScript strict mode, `noUncheckedIndexedAccess`, and type-aware ESLint rules enabled.
+- Keep Go code idiomatic, formatted with `gofmt`, and covered by `go test ./...`.
