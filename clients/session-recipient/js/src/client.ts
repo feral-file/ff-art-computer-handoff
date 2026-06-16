@@ -276,8 +276,8 @@ function parseSessionPayload(value: unknown, channelId: string, requestMessageId
   if (messageChannelId !== channelId) {
     throw new Error("mint result invalid");
   }
-  const responseRequestId = optionalString(value, "requestMessageId");
-  if (responseRequestId !== undefined && responseRequestId !== requestMessageId) {
+  const responseRequestId = requiredString(value, "requestMessageId", "mint result invalid");
+  if (responseRequestId !== requestMessageId) {
     throw new Error("mint result invalid");
   }
   if (value["type"] === "mint_rejected") {

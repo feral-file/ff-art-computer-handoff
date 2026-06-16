@@ -70,7 +70,7 @@ function memoryStorage(): TokenStorage & { entries: Map<string, string> } {
 async function createSuccessMessage(input: {
   minterPrivateKey: CryptoKey;
   browserPublicKeyJwk: JsonWebKey;
-  requestMessageId: string;
+  requestMessageId?: string;
   token?: string;
   sessionId?: string;
 }): Promise<ReturnType<typeof jsonResponse>> {
@@ -86,13 +86,41 @@ async function createSuccessMessage(input: {
       v: 1,
       type: "mint_succeeded",
       channelId: "ch_123",
-      requestMessageId: input.requestMessageId,
+      ...(input.requestMessageId === undefined ? {} : { requestMessageId: input.requestMessageId }),
       session: {
         token: input.token ?? "browser-session-token",
         sessionId: input.sessionId ?? "sess_123",
         expiresAt: "2030-01-01T00:00:00.000Z",
         relayerBaseUrl: "https://relayer.example"
       }
+    }
+  });
+  return jsonResponse({
+    channelId: "ch_123",
+    expiresAt: "2030-01-01T00:00:00.000Z",
+    messages: [{ seq: 2, ...encrypted }]
+  });
+}
+
+async function createRejectionMessage(input: {
+  minterPrivateKey: CryptoKey;
+  browserPublicKeyJwk: JsonWebKey;
+  requestMessageId?: string;
+}): Promise<ReturnType<typeof jsonResponse>> {
+  const encrypted = await encryptChannelMessage({
+    privateKey: input.minterPrivateKey,
+    peerPublicJwk: input.browserPublicKeyJwk,
+    channelId: "ch_123",
+    messageId: "msg_result",
+    seq: 2,
+    sender: "minter",
+    recipient: "browser",
+    plaintext: {
+      v: 1,
+      type: "mint_rejected",
+      channelId: "ch_123",
+      ...(input.requestMessageId === undefined ? {} : { requestMessageId: input.requestMessageId }),
+      reason: "denied"
     }
   });
   return jsonResponse({
@@ -181,6 +209,64 @@ describe("requestEphemeralSession", () => {
       "https://pairing.example/v1/channels/ch_123/messages?afterSeq=1",
       "https://pairing.example/v1/channels/ch_123/messages?afterSeq=1"
     ]);
+  });
+
+  it.each([
+    { type: "mint_succeeded", name: "omits requestMessageId" },
+    { type: "mint_succeeded", name: "uses a mismatched requestMessageId", responseRequestMessageId: "msg_wrong_request" },
+    { type: "mint_rejected", name: "omits requestMessageId" },
+    { type: "mint_rejected", name: "uses a mismatched requestMessageId", responseRequestMessageId: "msg_wrong_request" }
+  ] as const)("rejects a decrypted $type result that $name", async ({ type, responseRequestMessageId }) => {
+    const minterKeyPair = await generateBrowserKeyPair();
+    const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);
+    let browserPublicKeyJwk: JsonWebKey | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/v1/channels/ch_123/join")) {
+        browserPublicKeyJwk = requestBody(init)["browserPublicKeyJwk"] as JsonWebKey;
+        return jsonResponse({
+          channelId: "ch_123",
+          browserToken: "bt_123",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk,
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          nextSeq: 1
+        });
+      }
+      if (url.endsWith("/v1/channels/ch_123/messages") && init?.method === "POST") {
+        return jsonResponse({ channelId: "ch_123", seq: 1, expiresAt: "2030-01-01T00:00:00.000Z" });
+      }
+      if (url.includes("/v1/channels/ch_123/messages?")) {
+        expect(browserPublicKeyJwk).toBeDefined();
+        const messageInput = {
+          minterPrivateKey: minterKeyPair.privateKey,
+          browserPublicKeyJwk: browserPublicKeyJwk ?? {},
+          ...(responseRequestMessageId === undefined ? {} : { requestMessageId: responseRequestMessageId })
+        };
+        return type === "mint_succeeded" ? createSuccessMessage(messageInput) : createRejectionMessage(messageInput);
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+    const storage = memoryStorage();
+
+    await expect(requestEphemeralSession({
+      pairing: {
+        qrPayload: {
+          v: 1,
+          type: "ff-mint-pairing",
+          brokerBaseUrl: "https://pairing.example",
+          channelId: "ch_123",
+          pairingToken: "pt_123",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk
+        }
+      },
+      storage: { storage },
+      pollIntervalMs: 1,
+      fetchImpl
+    })).rejects.toThrow("mint result invalid");
+    expect(storage.entries.size).toBe(0);
   });
 
   it("resolves a short code before joining the channel", async () => {

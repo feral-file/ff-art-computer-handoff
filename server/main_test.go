@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -246,6 +247,41 @@ func TestTTLOnlyExtendsOnAcceptedMessages(t *testing.T) {
 	pollResponse := pollMessages(t, env, created.ChannelID, created.MinterToken, 0)
 	if pollResponse.ExpiresAt != appendResponse.ExpiresAt {
 		t.Fatalf("poll extended TTL: got %s, want %s", pollResponse.ExpiresAt, appendResponse.ExpiresAt)
+	}
+}
+
+func TestMalformedPollAfterSeqRejected(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	tests := []struct {
+		name     string
+		afterSeq string
+	}{
+		{
+			name:     "non numeric",
+			afterSeq: "not-a-number",
+		},
+		{
+			name:     "negative",
+			afterSeq: "-1",
+		},
+		{
+			name:     "uint64 overflow",
+			afterSeq: "18446744073709551616",
+		},
+		{
+			name:     "max uint64 boundary",
+			afterSeq: strconv.FormatUint(math.MaxUint64, 10),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, errCode := getJSON(t, env.server.URL+"/v1/channels/"+created.ChannelID+"/messages?afterSeq="+tt.afterSeq, created.MinterToken, nil)
+			if status != http.StatusBadRequest || errCode != "invalid_request" {
+				t.Fatalf("status/error = %d/%q, want 400/invalid_request", status, errCode)
+			}
+		})
 	}
 }
 

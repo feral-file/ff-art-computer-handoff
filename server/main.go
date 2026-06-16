@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -1119,6 +1120,9 @@ func parseAfterSeq(raw string) (uint64, error) {
 	value, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
 		return 0, err
+	}
+	if value == math.MaxUint64 {
+		return 0, fmt.Errorf("afterSeq must be less than %d", uint64(math.MaxUint64))
 	}
 	return value, nil
 }
