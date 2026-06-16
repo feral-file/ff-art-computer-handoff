@@ -2,7 +2,7 @@
 
 This package is the FF1 `feral-controld` side of browser session mint pairing. It creates Mint Pairing Broker channels, returns display material for the FF1 frontend, decrypts browser mint requests, and sends encrypted success or rejection responses back to the requester.
 
-The package deliberately does not implement `ff-controller` approval behavior or `ff-relayer` session creation policy. Host code should inject those integrations through the documented interfaces in `interfaces.go`.
+The package deliberately does not implement or abstract `ff-controller` approval behavior or `ff-relayer` session creation. `feral-controld` owns those integrations and passes only the final success or rejection payload back into this broker/E2EE library.
 
 ## Protocol Notes
 

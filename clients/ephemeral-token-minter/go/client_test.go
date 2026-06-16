@@ -103,7 +103,6 @@ func TestStartChannelParsesBrokerResponse(t *testing.T) {
 		BrokerBaseURL:      server.URL,
 		IdleTTL:            5 * time.Minute,
 		ShortCodeRequested: true,
-		TopicID:            "topic-1",
 	})
 	if err != nil {
 		t.Fatal(err)

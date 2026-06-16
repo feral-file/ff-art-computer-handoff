@@ -4,7 +4,7 @@
 
 This repository is a minimal secure prototype for ephemeral browser session mint pairing.
 
-The target parties are an NFT display website embedding the token requester browser library, FF1 `feral-controld` using a Go ephemeral token minter library, the FF1 frontend that displays the pairing QR/code, `ff-controller` as an approval UI reached through `ff-relayer`, `ff-relayer`, and the FF1 display path. The token minter creates a temporary mint receiver through the server in `server/`, establishes end-to-end encrypted communication with the NFT display website, asks `ff-controller` to approve or reject the requester metadata through `ff-relayer`, mints an ephemeral browser session through `ff-relayer` on approval, and transfers the token back to the NFT display website through the encrypted broker path. The current token requester implementation is a browser library that stores the recovered token in `localStorage` under the current website origin and uses it to request DP1 playlist display through `ff-relayer`. DP1 playlist content must not travel through `ff-controller`, the token minter, or the server.
+The target parties are an NFT display website embedding the token requester browser library, FF1 `feral-controld` using a Go ephemeral token minter library, the FF1 frontend that displays the pairing QR/code, `ff-controller` as an approval UI reached through `ff-relayer`, `ff-relayer`, and the FF1 display path. The Go minter library creates a temporary mint receiver through the server in `server/`, establishes end-to-end encrypted communication with the NFT display website, and transfers approval results or token payloads back to the NFT display website through the encrypted broker path. `feral-controld`, not the Go minter library, asks `ff-controller` to approve or reject requester metadata through `ff-relayer` and mints ephemeral browser sessions through `ff-relayer` on approval. The current token requester implementation is a browser library that stores the recovered token in `localStorage` under the current website origin and uses it to request DP1 playlist display through `ff-relayer`. DP1 playlist content must not travel through `ff-controller`, the token minter, or the server.
 
 The server in `server/` is now referred to in design docs as the Mint Pairing Broker rather than the handoff server. It remains a short-lived opaque E2EE transport backed by durable bbolt state in the target design.
 
@@ -129,9 +129,8 @@ Ephemeral token minter:
 - Starts temporary mint receivers through the Mint Pairing Broker.
 - Provides QR/deep-link and short-code pairing material for the FF1 frontend to display.
 - Receives requester origin and browser/client metadata through E2EE.
-- Asks `ff-controller` for user approval through `ff-relayer` before minting.
-- Calls `ff-relayer` `POST /api/ephemeral-sessions?topicID=...` only after approval.
-- Sends minted token information back only through the E2EE broker path.
+- Does not call `ff-controller` or `ff-relayer`; `feral-controld` owns approval and session creation.
+- Sends host-provided minted token information back only through the E2EE broker path.
 
 Integration/CI:
 

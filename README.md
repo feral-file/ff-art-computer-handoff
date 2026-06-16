@@ -10,7 +10,7 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 
 - [server](server/README.md): Go Mint Pairing Broker backed by durable bbolt storage.
 - [clients/session-recipient/js](clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites.
-- [clients/ephemeral-token-minter/go](clients/ephemeral-token-minter/go/README.md): Go library used by FF1 `feral-controld` to create mint receivers, coordinate approval through injected `ff-relayer`/approval integrations, and return encrypted mint results.
+- [clients/ephemeral-token-minter/go](clients/ephemeral-token-minter/go/README.md): Go library used by FF1 `feral-controld` to communicate with the broker, handle E2EE mint request/result payloads, and return encrypted mint results.
 - [integration](integration/README.md): Vitest integration tests.
 - `.github/workflows/ci.yml`: CI for server, NFT display website requester library, token minter, and integration tests after the implementation is updated.
 - `Dockerfile`: Production image for the Mint Pairing Broker.

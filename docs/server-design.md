@@ -36,8 +36,9 @@ The two broker clients are:
 
 The FF1 frontend displays pairing material produced by the minter. It is not a
 broker protocol participant unless a future implementation makes it one.
-`ff-controller` and `ff-relayer` are outside the broker data plane; the minter
-uses them for approval and token minting after it decrypts a browser request.
+`ff-controller` and `ff-relayer` are outside the broker data plane; `feral-controld`
+uses them for approval and token minting after the Go minter library decrypts a
+browser request.
 
 ## QR Pairing Token
 

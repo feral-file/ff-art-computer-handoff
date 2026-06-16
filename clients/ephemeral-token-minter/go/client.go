@@ -159,7 +159,7 @@ func (ch *Channel) PollMintRequest(ctx context.Context, afterSeq int64) (*MintRe
 	return nil, nil
 }
 
-// SendMintSuccess encrypts a relayer-created session result for the requester.
+// SendMintSuccess encrypts a host-created session result for the requester.
 func (ch *Channel) SendMintSuccess(ctx context.Context, request MintRequest, result MintResult) (*SendMessageResult, error) {
 	if result.Token == "" {
 		return nil, errors.New("mint result token is required")

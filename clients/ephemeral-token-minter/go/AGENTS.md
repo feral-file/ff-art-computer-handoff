@@ -18,7 +18,7 @@ go test ./...
 
 - Keep Go code idiomatic, formatted with `gofmt`, and covered by `go test ./...`.
 - Use P-256 ECDH, HKDF-SHA256, and AES-256-GCM through maintained standard-library crypto packages.
-- Do not implement `ff-controller` approval UI or `ff-relayer` session business logic here; expose interfaces for host code to inject those integrations.
+- Do not implement or abstract `ff-controller` approval UI or `ff-relayer` session business logic here; this package should only communicate with the Mint Pairing Broker and handle E2EE payloads.
 - Do not log ephemeral browser session tokens, DP1 playlist content, or decrypted mint payloads.
 - Send raw browser session tokens only inside the end-to-end encrypted broker response.
 - Treat broker messages as opaque transport envelopes; broker-visible errors and HTTP errors must not include token material.

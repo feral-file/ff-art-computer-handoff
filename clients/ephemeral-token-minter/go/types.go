@@ -29,7 +29,6 @@ type StartChannelOptions struct {
 	BrokerBaseURL      string
 	IdleTTL            time.Duration
 	ShortCodeRequested bool
-	TopicID            string // Host-owned relayer topic context; not sent to the broker.
 }
 
 // PairingDisplay is safe to pass to the FF1 frontend for QR/deep-link or
@@ -48,8 +47,7 @@ type BrowserInfo struct {
 	Label     string `json:"label,omitempty"`
 }
 
-// MintRequest is the decrypted browser request host code can submit to its
-// approval integration.
+// MintRequest is the decrypted browser request returned to feral-controld.
 type MintRequest struct {
 	ChannelID                 string
 	MessageID                 string
@@ -60,8 +58,8 @@ type MintRequest struct {
 	RequestedExpiresInSeconds int `json:"requestedExpiresInSeconds,omitempty"`
 }
 
-// MintResult is the relayer-created browser session returned to the browser
-// only inside an encrypted broker message.
+// MintResult is the host-created browser session returned to the browser only
+// inside an encrypted broker message.
 type MintResult struct {
 	SessionID      string    `json:"sessionId"`
 	Token          string    `json:"token"`
