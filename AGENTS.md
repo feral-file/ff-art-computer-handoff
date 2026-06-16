@@ -2,20 +2,23 @@
 
 ## Project Purpose
 
-This repository is a minimal secure prototype for ephemeral browser session handoff.
+This repository is a minimal secure prototype for ephemeral browser session mint pairing.
 
-The three parties are `ff-controller`, a session-recipient client, and `ff-relayer`. `ff-controller` is the mobile app. It creates or obtains an ephemeral browser session for a relay topic and sends that session to the granted client through the handoff server in `server/`. The current session-recipient implementation is a browser library that receives the ephemeral session token, stores it in `localStorage` under the current website origin, and uses it to request DP1 playlist display through `ff-relayer`. DP1 playlist content must not travel through `ff-controller`.
+The target parties are an NFT display website embedding the token requester browser library, FF1 `feral-controld` using a Go ephemeral token minter library, the FF1 frontend that displays the pairing QR/code, `ff-controller` as an approval UI reached through `ff-relayer`, `ff-relayer`, and the FF1 display path. The token minter creates a temporary mint receiver through the server in `server/`, establishes end-to-end encrypted communication with the NFT display website, asks `ff-controller` to approve or reject the requester metadata through `ff-relayer`, mints an ephemeral browser session through `ff-relayer` on approval, and transfers the token back to the NFT display website through the encrypted broker path. The current token requester implementation is a browser library that stores the recovered token in `localStorage` under the current website origin and uses it to request DP1 playlist display through `ff-relayer`. DP1 playlist content must not travel through `ff-controller`, the token minter, or the server.
+
+The server in `server/` is now referred to in design docs as the Mint Pairing Broker rather than the handoff server. It remains a short-lived opaque E2EE transport backed by durable LMDB state.
 
 The sequential flow lives in `docs/sequential-flow.md`. Component-specific rules live in each component's `AGENTS.md`.
 
 ## Directory Structure
 
 - `docs/`: shared architecture and flow documentation.
-- `server/`: Node.js, Fastify, TypeScript, LMDB-backed handoff server.
-- `clients/session-recipient/js/`: TypeScript session-recipient implementation for browser runtimes.
-- `clients/ff-controller/flutter/`: Flutter/Dart `ff-controller` client implementation.
+- `server/`: Node.js, Fastify, TypeScript, LMDB-backed Mint Pairing Broker.
+- `clients/session-recipient/js/`: TypeScript token requester library embedded by NFT display websites.
+- `clients/ephemeral-token-minter/go/`: planned Go ephemeral token minter library used by FF1 `feral-controld`.
+- `clients/ff-controller/flutter/`: legacy Flutter/Dart implementation from the old flow; remove or replace in the code migration.
 - `integration/`: Vitest integration tests.
-- `.github/workflows/ci.yml`: CI jobs for server, session-recipient client, controller client, and integration tests.
+- `.github/workflows/ci.yml`: CI jobs for server, NFT display website requester library, token minter, and integration tests after the code migration.
 - `.github/workflows/build-image.yml`: Manual production image build/push workflow for Feral File DOCR.
 
 ## Commands
@@ -31,7 +34,7 @@ npm test
 npm run build
 ```
 
-Session-recipient client:
+NFT display website requester library:
 
 ```sh
 cd clients/session-recipient/js
@@ -39,16 +42,6 @@ npm ci
 npm run lint
 npm run typecheck
 npm test
-```
-
-Controller client:
-
-```sh
-cd clients/ff-controller/flutter
-flutter pub get
-dart format --set-exit-if-changed .
-flutter analyze
-flutter test
 ```
 
 Integration:
@@ -73,13 +66,14 @@ npm test
 8. Durable server state must not be replaced with process-local maps.
 9. Payloads and request bodies keep strict size limits.
 10. Tests must not hardcode production credentials.
+11. `ff-controller` approves or rejects mint requests but does not receive raw browser session tokens.
 
 ## Coding Rules
 
 - Do not introduce in-memory maps for sessions, payloads, token state, expiry state, or test shortcuts.
 - Every server state transition must read from and write to LMDB.
 - Keep TypeScript strict mode, `noUncheckedIndexedAccess`, and type-aware ESLint rules enabled.
-- Keep Dart strict analyzer rules enabled.
+- Keep Go code idiomatic, formatted with `gofmt`, and covered by `go test ./...` once the minter exists.
 - Prefer small, explicit protocol structures over loosely typed JSON.
 - Do not add website-specific concepts to public APIs.
 
@@ -87,13 +81,13 @@ npm test
 
 - Server storage must remain a local durable embedded KV store, currently LMDB.
 - Do not add Redis, Postgres, WebSockets, SSE, or external queue dependencies without human approval.
-- Flutter crypto must use maintained crypto packages. Do not implement elliptic-curve math manually.
+- Go crypto must use maintained standard-library or reviewed crypto packages. Do not implement elliptic-curve math manually.
 
 ## Product Scope Rules
 
-- Optimize names and APIs for `ff-controller`, session-recipient clients, the handoff server, and `ff-relayer`.
-- Keep session-recipient clients general for browsers and future third-party clients granted by `ff-controller`.
-- Keep controller-client implementations general enough to support multiple mobile-platform implementations over time.
+- Optimize names and APIs for NFT display websites, the requester library they embed, the ephemeral token minter, `ff-controller`, the Mint Pairing Broker, and `ff-relayer`.
+- Keep requester clients general for browsers and future third-party clients granted through the token minter.
+- Keep `ff-controller` as an approval surface; do not make it the browser-session token minter in the new flow.
 - Do not implement flow changes unless explicitly requested.
 
 ## Do Not Change Without Human Approval
@@ -115,23 +109,33 @@ Server:
 - API validation rejects malformed input.
 - Server logs do not expose tokens or playlist content.
 
-Session-recipient client:
+NFT display website requester library:
 
 - Token storage is origin-scoped.
 - Public API does not expose raw tokens unnecessarily.
 - Display requests use ephemeral browser session auth only for the intended `ff-relayer` path.
 - Errors and logs do not leak tokens or playlist content.
 
-Controller client:
+`ff-controller` approval UI and legacy controller client:
 
-- Creates or obtains browser sessions with user authority.
-- Sends session handoff to the browser through the handoff server.
+- Treat the Flutter controller library as legacy until it is removed.
+- `ff-controller` approves or rejects mint requests through `ff-relayer` communication.
 - Does not receive or proxy DP1 playlist content.
+- Does not receive raw browser session tokens.
 - Errors and logs do not leak tokens.
+
+Ephemeral token minter:
+
+- Starts temporary mint receivers through the Mint Pairing Broker.
+- Provides QR/deep-link and short-code pairing material for the FF1 frontend to display.
+- Receives requester origin and browser/client metadata through E2EE.
+- Asks `ff-controller` for user approval through `ff-relayer` before minting.
+- Calls `ff-relayer` `POST /api/ephemeral-sessions?topicID=...` only after approval.
+- Sends minted token information back only through the E2EE broker path.
 
 Integration/CI:
 
-- Integration tests cover the full session handoff sequence as implementation support lands.
+- Integration tests cover the full mint pairing sequence as implementation support lands.
 - Tests use isolated temporary storage.
 - CI runs lint, typecheck/analyze, and tests for all components.
 - CI does not require a git repository to exist locally before first commit.
@@ -139,10 +143,10 @@ Integration/CI:
 ## Definition of Done
 
 - Required files exist in the expected directories.
-- Server, session-recipient client, controller client, and integration tests are present.
+- Server, NFT display website requester library, token minter, and integration tests are present.
 - Lint/type/analyzer configurations are strict.
 - CI workflow is ready for GitHub Actions.
-- Docker image build succeeds before deployment handoff work is considered ready.
+- Docker image build succeeds before deployment broker work is considered ready.
 - Security invariants remain documented and enforced by code or tests where practical.
 - Reviewer findings are fixed or documented as known limitations.
 

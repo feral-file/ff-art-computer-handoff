@@ -2,7 +2,7 @@
 
 `integration/` contains Vitest tests for cross-component behavior.
 
-Integration coverage should exercise the three-party flow described in [Sequential Flow](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/sequential-flow.md): `ff-controller`, the browser library, and `ff-relayer`, with the handoff server covered as the transport component between mobile and browser.
+Integration coverage should exercise the mint pairing flow described in [Sequential Flow](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/sequential-flow.md): NFT display website with embedded token requester library, Go ephemeral token minter embedded in FF1 `feral-controld`, FF1 frontend QR/code display, `ff-controller` approval UI reached through `ff-relayer`, FF1 display path, and the Mint Pairing Broker as the short-lived opaque E2EE transport.
 
 ## Commands
 

@@ -2,7 +2,7 @@
 
 ## Component
 
-`server/` is the handoff server. It bridges `ff-controller` and session-recipient clients for ephemeral browser session delivery.
+`server/` is the Mint Pairing Broker. It bridges NFT display websites and ephemeral token minters for short-lived, end-to-end encrypted mint request/response exchange.
 
 ## Commands
 

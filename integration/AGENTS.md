@@ -17,5 +17,5 @@ npm test
 
 - Use isolated temporary storage for tests.
 - Do not hardcode production credentials.
-- Cover the three-party sequence as implementation support lands.
+- Cover the mint pairing sequence as implementation support lands.
 - Keep tests focused on externally visible behavior and security boundaries.
