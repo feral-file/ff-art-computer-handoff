@@ -14,6 +14,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -595,12 +596,13 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 
 	now := b.now().UTC()
 	shortCodeHash := hashString(req.ShortCode)
+	resolveSourceKey := shortCodeResolveSourceKey(r.RemoteAddr)
 	var response ResolvePairingCodeResponse
 	var status int
 	var code string
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		attemptKey := shortCodeResolveAttemptKey(shortCodeHash)
-		aggregateAttemptKey := shortCodeResolveAggregateAttemptKey()
+		aggregateAttemptKey := shortCodeResolveAggregateAttemptKey(resolveSourceKey)
 		if limited, err := rateLimitAttempt(tx, aggregateAttemptKey, now); err != nil {
 			return err
 		} else if limited {
@@ -1368,8 +1370,19 @@ func shortCodeResolveAttemptKey(shortCodeHash string) string {
 	return "code:" + shortCodeHash
 }
 
-func shortCodeResolveAggregateAttemptKey() string {
-	return "resolve:aggregate"
+func shortCodeResolveAggregateAttemptKey(sourceKey string) string {
+	return "resolve:source:" + sourceKey
+}
+
+func shortCodeResolveSourceKey(remoteAddr string) string {
+	source := remoteAddr
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		source = host
+	}
+	if source == "" {
+		source = "unknown"
+	}
+	return hashString(source)
 }
 
 func shortCodeJoinAttemptKey(channelID string) string {

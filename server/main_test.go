@@ -508,24 +508,40 @@ func TestMalformedAppendMessageRequestsRejected(t *testing.T) {
 	}
 }
 
-func TestShortCodeResolveAggregateRateLimitPersistsAcrossRestart(t *testing.T) {
+func TestShortCodeResolveSourceRateLimitPersistsAcrossRestart(t *testing.T) {
 	env := newTestEnv(t)
-	for i := 0; i < shortCodeAttemptLimit; i++ {
-		code := fmt.Sprintf("%06d", i)
-		status, errCode := postJSON(t, env.server.URL+"/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+	created := createChannel(t, env, true)
+	for misses, candidate := 0, 0; misses < shortCodeAttemptLimit; candidate++ {
+		code := fmt.Sprintf("%06d", candidate)
+		if code == created.ShortCode {
+			continue
+		}
+		status, errCode := postJSONFromRemote(t, env.broker, "198.51.100.10:12345", "/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
 			ShortCode: code,
 		}, nil)
 		if status != http.StatusNotFound || errCode != "not_found" {
-			t.Fatalf("resolve miss %d status/error = %d/%q, want 404/not_found", i, status, errCode)
+			t.Fatalf("resolve miss %d status/error = %d/%q, want 404/not_found", misses, status, errCode)
 		}
+		misses++
 	}
 
 	env.restart(t)
-	status, errCode := postJSON(t, env.server.URL+"/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+	status, errCode := postJSONFromRemote(t, env.broker, "198.51.100.10:54321", "/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
 		ShortCode: "999999",
 	}, nil)
 	if status != http.StatusTooManyRequests || errCode != "rate_limited" {
-		t.Fatalf("aggregate limited resolve status/error = %d/%q, want 429/rate_limited", status, errCode)
+		t.Fatalf("source limited resolve status/error = %d/%q, want 429/rate_limited", status, errCode)
+	}
+
+	var resolved ResolvePairingCodeResponse
+	status, errCode = postJSONFromRemote(t, env.broker, "198.51.100.11:12345", "/v1/pairing-codes/resolve", "", ResolvePairingCodeRequest{
+		ShortCode: created.ShortCode,
+	}, &resolved)
+	if status != http.StatusOK || errCode != "" {
+		t.Fatalf("valid resolve from other source status/error = %d/%q, want 200", status, errCode)
+	}
+	if resolved.ChannelID != created.ChannelID {
+		t.Fatalf("resolved channel = %q, want %q", resolved.ChannelID, created.ChannelID)
 	}
 }
 
@@ -729,6 +745,25 @@ func postJSON(t *testing.T, url, token string, body any, out any) (int, string) 
 	return postRawJSON(t, url, token, string(raw), out)
 }
 
+func postJSONFromRemote(t *testing.T, handler http.Handler, remoteAddr, path, token string, body any, out any) (int, string) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(raw)))
+	req.RemoteAddr = remoteAddr
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	resp := recorder.Result()
+	defer resp.Body.Close()
+	return decodeJSONResponse(t, resp, out)
+}
+
 func postRawJSON(t *testing.T, url, token, body string, out any) (int, string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
@@ -771,6 +806,11 @@ func doJSON(t *testing.T, req *http.Request, out any) (int, string) {
 		t.Fatalf("http request: %v", err)
 	}
 	defer resp.Body.Close()
+	return decodeJSONResponse(t, resp, out)
+}
+
+func decodeJSONResponse(t *testing.T, resp *http.Response, out any) (int, string) {
+	t.Helper()
 	var errorBody struct {
 		Error string `json:"error"`
 	}

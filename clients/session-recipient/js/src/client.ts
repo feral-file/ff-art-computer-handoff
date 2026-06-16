@@ -290,6 +290,10 @@ function parseSessionPayload(value: unknown, channelId: string, requestMessageId
   const token = requiredString(session, "token", "mint result invalid");
   const sessionId = requiredString(session, "sessionId", "mint result invalid");
   const expiresAt = requiredString(session, "expiresAt", "mint result invalid");
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    throw new Error("mint result invalid");
+  }
   const relayerBaseUrl = optionalString(session, "relayerBaseUrl");
   return {
     token,

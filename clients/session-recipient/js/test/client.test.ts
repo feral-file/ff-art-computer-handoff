@@ -73,6 +73,7 @@ async function createSuccessMessage(input: {
   requestMessageId?: string;
   token?: string;
   sessionId?: string;
+  expiresAt?: string;
 }): Promise<ReturnType<typeof jsonResponse>> {
   const encrypted = await encryptChannelMessage({
     privateKey: input.minterPrivateKey,
@@ -90,7 +91,7 @@ async function createSuccessMessage(input: {
       session: {
         token: input.token ?? "browser-session-token",
         sessionId: input.sessionId ?? "sess_123",
-        expiresAt: "2030-01-01T00:00:00.000Z",
+        expiresAt: input.expiresAt ?? "2030-01-01T00:00:00.000Z",
         relayerBaseUrl: "https://relayer.example"
       }
     }
@@ -244,6 +245,64 @@ describe("requestEphemeralSession", () => {
           ...(responseRequestMessageId === undefined ? {} : { requestMessageId: responseRequestMessageId })
         };
         return type === "mint_succeeded" ? createSuccessMessage(messageInput) : createRejectionMessage(messageInput);
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+    const storage = memoryStorage();
+
+    await expect(requestEphemeralSession({
+      pairing: {
+        qrPayload: {
+          v: 1,
+          type: "ff-mint-pairing",
+          brokerBaseUrl: "https://pairing.example",
+          channelId: "ch_123",
+          pairingToken: "pt_123",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk
+        }
+      },
+      storage: { storage },
+      pollIntervalMs: 1,
+      fetchImpl
+    })).rejects.toThrow("mint result invalid");
+    expect(storage.entries.size).toBe(0);
+  });
+
+  it.each([
+    { name: "malformed", expiresAt: "not-a-date" },
+    { name: "already expired", expiresAt: "2000-01-01T00:00:00.000Z" }
+  ])("rejects a decrypted mint_succeeded result with $name expiresAt without storing", async ({ expiresAt }) => {
+    const minterKeyPair = await generateBrowserKeyPair();
+    const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);
+    let browserPublicKeyJwk: JsonWebKey | undefined;
+    let requestMessageId = "";
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/v1/channels/ch_123/join")) {
+        browserPublicKeyJwk = requestBody(init)["browserPublicKeyJwk"] as JsonWebKey;
+        return jsonResponse({
+          channelId: "ch_123",
+          browserToken: "bt_123",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk,
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          nextSeq: 1
+        });
+      }
+      if (url.endsWith("/v1/channels/ch_123/messages") && init?.method === "POST") {
+        requestMessageId = requestBody(init)["messageId"] as string;
+        return jsonResponse({ channelId: "ch_123", seq: 1, expiresAt: "2030-01-01T00:00:00.000Z" });
+      }
+      if (url.includes("/v1/channels/ch_123/messages?")) {
+        expect(browserPublicKeyJwk).toBeDefined();
+        return createSuccessMessage({
+          minterPrivateKey: minterKeyPair.privateKey,
+          browserPublicKeyJwk: browserPublicKeyJwk ?? {},
+          requestMessageId,
+          expiresAt
+        });
       }
       throw new Error(`unexpected request ${url}`);
     });
