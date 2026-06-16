@@ -39,8 +39,12 @@ func TestCryptoRoundTrip(t *testing.T) {
 		Algorithm: Algorithm,
 	}
 	encrypted, err := encryptJSON(browserKey, minterJWK, aad, mintRequestPlaintext{
-		Type:   messageTypeMintRequest,
-		Origin: "https://nft.example",
+		Version:             1,
+		Type:                messageTypeMintRequest,
+		ChannelID:           "ch_test",
+		RequestMessageID:    "msg_test",
+		Origin:              "https://nft.example",
+		BrowserPublicKeyJWK: browserJWK,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,13 +120,17 @@ func TestStartChannelParsesBrokerResponse(t *testing.T) {
 func TestPollMintRequestDecryptsBrowserMessage(t *testing.T) {
 	harness := newChannelHarness(t)
 	requestPlaintext := mintRequestPlaintext{
-		Type:   messageTypeMintRequest,
-		Origin: "https://nft.example",
+		Version:          1,
+		Type:             messageTypeMintRequest,
+		ChannelID:        "ch_test",
+		RequestMessageID: "msg_browser",
+		Origin:           "https://nft.example",
 		BrowserInfo: BrowserInfo{
 			Name:      "Chrome",
 			UserAgent: "Mozilla/5.0",
 			Label:     "Gallery laptop",
 		},
+		BrowserPublicKeyJWK:       harness.browserJWK,
 		RequestedExpiresInSeconds: 900,
 	}
 	message := harness.encryptBrowserMessage(t, "msg_browser", 7, requestPlaintext)
@@ -143,6 +151,100 @@ func TestPollMintRequestDecryptsBrowserMessage(t *testing.T) {
 	}
 }
 
+func TestPollMintRequestRejectsInvalidPlaintextBindings(t *testing.T) {
+	testCases := []struct {
+		name      string
+		plaintext func(*channelHarness) mintRequestPlaintext
+		messageID string
+	}{
+		{
+			name: "missing version",
+			plaintext: func(h *channelHarness) mintRequestPlaintext {
+				plaintext := h.validMintRequestPlaintext("msg_browser")
+				plaintext.Version = 0
+				return plaintext
+			},
+			messageID: "msg_browser",
+		},
+		{
+			name: "channel mismatch",
+			plaintext: func(h *channelHarness) mintRequestPlaintext {
+				plaintext := h.validMintRequestPlaintext("msg_browser")
+				plaintext.ChannelID = "ch_other"
+				return plaintext
+			},
+			messageID: "msg_browser",
+		},
+		{
+			name: "request message id mismatch",
+			plaintext: func(h *channelHarness) mintRequestPlaintext {
+				plaintext := h.validMintRequestPlaintext("msg_browser")
+				plaintext.RequestMessageID = "msg_other"
+				return plaintext
+			},
+			messageID: "msg_browser",
+		},
+		{
+			name: "browser key mismatch",
+			plaintext: func(h *channelHarness) mintRequestPlaintext {
+				otherKey, err := generatePrivateKey()
+				if err != nil {
+					h.t.Fatal(err)
+				}
+				otherJWK, err := publicKeyToJWK(otherKey.PublicKey())
+				if err != nil {
+					h.t.Fatal(err)
+				}
+				plaintext := h.validMintRequestPlaintext("msg_browser")
+				plaintext.BrowserPublicKeyJWK = otherJWK
+				return plaintext
+			},
+			messageID: "msg_browser",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newChannelHarness(t)
+			harness.messages = []encryptedMessage{
+				harness.encryptBrowserMessage(t, testCase.messageID, 7, testCase.plaintext(harness)),
+			}
+
+			request, err := harness.channel.PollMintRequest(context.Background(), 6)
+			if err == nil {
+				t.Fatalf("expected validation error, got request %#v", request)
+			}
+		})
+	}
+}
+
+func TestPollMintRequestRejectsInvalidOrigins(t *testing.T) {
+	invalidOrigins := []string{
+		"",
+		"nft.example",
+		"ftp://nft.example",
+		"https://nft.example/path",
+		"https://nft.example/",
+		"https://nft.example?x=1",
+		"https://nft.example#fragment",
+		"https://user:pass@nft.example",
+	}
+	for _, origin := range invalidOrigins {
+		t.Run(origin, func(t *testing.T) {
+			harness := newChannelHarness(t)
+			plaintext := harness.validMintRequestPlaintext("msg_browser")
+			plaintext.Origin = origin
+			harness.messages = []encryptedMessage{
+				harness.encryptBrowserMessage(t, "msg_browser", 7, plaintext),
+			}
+
+			request, err := harness.channel.PollMintRequest(context.Background(), 6)
+			if err == nil {
+				t.Fatalf("expected invalid origin error, got request %#v", request)
+			}
+		})
+	}
+}
+
 func TestSendMintSuccessAndRejectionEncryptPayloads(t *testing.T) {
 	harness := newChannelHarness(t)
 	request := harness.mintRequest(t)
@@ -159,6 +261,9 @@ func TestSendMintSuccessAndRejectionEncryptPayloads(t *testing.T) {
 	}
 	if result.Seq != 100 {
 		t.Fatalf("unexpected send result: %#v", result)
+	}
+	if harness.closed {
+		t.Fatal("terminal send should not close before browser can poll the result")
 	}
 	if len(harness.sentMessages) != 1 {
 		t.Fatalf("expected one sent message, got %d", len(harness.sentMessages))
@@ -181,6 +286,9 @@ func TestSendMintSuccessAndRejectionEncryptPayloads(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if harness.closed {
+		t.Fatal("terminal send should not close before browser can poll the result")
 	}
 	rejectionPlaintext := harness.decryptMinterMessage(t, harness.sentMessages[1])
 	var rejection mintRejectionPlaintext
@@ -306,6 +414,17 @@ func (h *channelHarness) encryptBrowserMessage(t *testing.T, messageID string, s
 	message.Seq = seq
 	message.SenderPublicKeyJWK = &h.browserJWK
 	return message
+}
+
+func (h *channelHarness) validMintRequestPlaintext(messageID string) mintRequestPlaintext {
+	return mintRequestPlaintext{
+		Version:             1,
+		Type:                messageTypeMintRequest,
+		ChannelID:           h.channel.channelID,
+		RequestMessageID:    messageID,
+		Origin:              "https://nft.example",
+		BrowserPublicKeyJWK: h.browserJWK,
+	}
 }
 
 func (h *channelHarness) mintRequest(t *testing.T) MintRequest {

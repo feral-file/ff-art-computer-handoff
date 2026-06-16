@@ -63,6 +63,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: clients/ephemeral-token-minter/go/go.mod
+          cache-dependency-path: |
+            clients/ephemeral-token-minter/go/go.mod
+            integration/go-minter-helper/go.mod
       - run: npm ci
         working-directory: clients/session-recipient/js
       - run: npm ci

@@ -143,8 +143,8 @@ func (ch *Channel) PollMintRequest(ctx context.Context, afterSeq int64) (*MintRe
 		if decoded.Type != messageTypeMintRequest {
 			continue
 		}
-		if decoded.Origin == "" {
-			return nil, errors.New("mint request missing origin")
+		if err := validateMintRequestPlaintext(decoded, ch.channelID, message.MessageID, remotePublicJWK); err != nil {
+			return nil, err
 		}
 		return &MintRequest{
 			ChannelID:                 ch.channelID,
@@ -229,6 +229,49 @@ func (ch *Channel) sendEncryptedResult(ctx context.Context, request MintRequest,
 		Seq:       response.Seq,
 		ExpiresAt: response.ExpiresAt,
 	}, nil
+}
+
+func validateMintRequestPlaintext(decoded mintRequestPlaintext, channelID string, messageID string, senderPublicJWK PublicJWK) error {
+	if decoded.Version != 1 {
+		return fmt.Errorf("unsupported mint request version: %d", decoded.Version)
+	}
+	if decoded.ChannelID == "" || decoded.ChannelID != channelID {
+		return errors.New("mint request channel mismatch")
+	}
+	if decoded.RequestMessageID == "" || decoded.RequestMessageID != messageID {
+		return errors.New("mint request message id mismatch")
+	}
+	if !publicJWKMatches(decoded.BrowserPublicKeyJWK, senderPublicJWK) {
+		return errors.New("mint request browser public key mismatch")
+	}
+	if err := validateBrowserOrigin(decoded.Origin); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateBrowserOrigin(origin string) error {
+	if origin == "" {
+		return errors.New("mint request missing origin")
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return fmt.Errorf("parse mint request origin: %w", err)
+	}
+	if !parsed.IsAbs() || parsed.Host == "" {
+		return errors.New("mint request origin must be absolute")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("mint request origin must use http or https")
+	}
+	if parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawPath != "" || parsed.Opaque != "" {
+		return errors.New("mint request origin must not include credentials, path, query, or fragment")
+	}
+	return nil
+}
+
+func publicJWKMatches(a PublicJWK, b PublicJWK) bool {
+	return a.KeyType == b.KeyType && a.Curve == b.Curve && a.X == b.X && a.Y == b.Y
 }
 
 func (c *Client) doJSON(ctx context.Context, method string, base *url.URL, requestPath string, bearerToken string, requestBody any, responseBody any) error {

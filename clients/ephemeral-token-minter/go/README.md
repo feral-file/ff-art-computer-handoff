@@ -11,6 +11,7 @@ The package deliberately does not implement `ff-controller` approval behavior or
 - Encrypted envelopes include channel-binding AAD.
 - Browser-to-minter envelopes must carry the browser public JWK as public envelope metadata so the minter can derive the ECDH shared secret without exposing plaintext to the broker.
 - Session tokens must not be logged and are sent to the browser only inside encrypted `mint_succeeded` payloads.
+- `SendMintSuccess` and `SendMintRejection` send terminal encrypted results but deliberately do not close the broker channel immediately, because the browser must still poll the accepted message. Host code should call `Close` after result delivery, timeout, cancellation, or local cleanup policy permits channel removal.
 
 ## Test
 

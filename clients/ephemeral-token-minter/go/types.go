@@ -106,9 +106,13 @@ type envelopeAAD struct {
 }
 
 type mintRequestPlaintext struct {
+	Version                   int         `json:"v"`
 	Type                      string      `json:"type"`
+	ChannelID                 string      `json:"channelId"`
+	RequestMessageID          string      `json:"requestMessageId"`
 	Origin                    string      `json:"origin"`
 	BrowserInfo               BrowserInfo `json:"browserInfo,omitempty"`
+	BrowserPublicKeyJWK       PublicJWK   `json:"browserPublicKeyJwk"`
 	RequestedExpiresInSeconds int         `json:"requestedExpiresInSeconds,omitempty"`
 }
 

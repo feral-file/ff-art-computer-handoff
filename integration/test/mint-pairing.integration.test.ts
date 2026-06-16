@@ -1,7 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessByStdio } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   decryptChannelMessage,
@@ -52,10 +53,13 @@ type DockerBroker = {
   dataDir: string;
 };
 
+type HelperProcess = ChildProcessByStdio<null, Readable, Readable>;
+
 const imageTag = `mint-pairing-broker-integration:${String(process.pid)}`;
 const repoRoot = resolve("..");
 const tempDirs: string[] = [];
 const containers: string[] = [];
+const helperProcesses: HelperProcess[] = [];
 const testOrigin = "https://nft.example";
 let previousLocationDescriptor: PropertyDescriptor | undefined;
 
@@ -140,6 +144,65 @@ function stopBroker(containerId: string): void {
   if (index >= 0) {
     containers.splice(index, 1);
   }
+}
+
+function stopHelper(child: HelperProcess): void {
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGTERM");
+  }
+  const index = helperProcesses.indexOf(child);
+  if (index >= 0) {
+    helperProcesses.splice(index, 1);
+  }
+}
+
+function waitForExit(child: HelperProcess): Promise<void> {
+  return new Promise((resolveWait, reject) => {
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) {
+        resolveWait();
+        return;
+      }
+      reject(new Error(`go minter helper exited with code ${String(code)} signal ${String(signal)}\n${stderr}`));
+    });
+  });
+}
+
+async function startGoMinterHelper(baseUrl: string): Promise<{ child: HelperProcess; qrPayload: unknown; done: Promise<void> }> {
+  const child = spawn("go", ["run", "."], {
+    cwd: join(repoRoot, "integration/go-minter-helper"),
+    env: { ...process.env, BROKER_BASE_URL: baseUrl },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  helperProcesses.push(child);
+  const done = waitForExit(child);
+  let stdout = "";
+  const qrPayload = await new Promise<unknown>((resolveReady, reject) => {
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+      const newlineIndex = stdout.indexOf("\n");
+      if (newlineIndex < 0) {
+        return;
+      }
+      const line = stdout.slice(0, newlineIndex);
+      try {
+        const ready = JSON.parse(line) as { qrPayload?: unknown };
+        resolveReady(ready.qrPayload);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      reject(new Error(`go minter helper exited before ready with code ${String(code)}`));
+    });
+  });
+  return { child, qrPayload, done };
 }
 
 async function readJSON<T>(response: Response): Promise<T> {
@@ -269,6 +332,9 @@ afterEach(() => {
   for (const containerId of [...containers]) {
     stopBroker(containerId);
   }
+  for (const child of [...helperProcesses]) {
+    stopHelper(child);
+  }
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -283,6 +349,30 @@ afterAll(() => {
 });
 
 describe("mint pairing integration", () => {
+  it("pairs JS requester with the Go minter through a Dockerized broker", async () => {
+    const broker = await startBroker();
+    const helper = await startGoMinterHelper(broker.baseUrl);
+    try {
+      const browserSessionPromise = requestEphemeralSession({
+        pairing: { qrPayload: qrPayloadForBroker(helper.qrPayload, broker.baseUrl) },
+        browserInfo: { name: "Integration Browser" },
+        storage: false,
+        pollIntervalMs: 50,
+        maxWaitMs: 10_000
+      });
+
+      await expect(browserSessionPromise).resolves.toEqual({
+        token: "go-integration-browser-session-token",
+        sessionId: "eps_go_integration",
+        expiresAt: "2030-01-01T00:00:00Z",
+        relayerBaseUrl: "https://relayer.example"
+      });
+      await helper.done;
+    } finally {
+      stopHelper(helper.child);
+    }
+  }, 30_000);
+
   it("pairs browser and minter through a Dockerized bbolt broker and survives broker restart", async () => {
     const firstBroker = await startBroker();
     const minterKeyPair = await generateBrowserKeyPair();

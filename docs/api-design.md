@@ -348,7 +348,7 @@ Expected library operations:
 - Ask `ff-controller` for approval through `ff-relayer`.
 - On approval, call `ff-relayer` `POST /api/ephemeral-sessions?topicID=...`.
 - Encrypt success or rejection back to the browser over the broker channel.
-- Close the channel after terminal success or rejection.
+- Close the channel after terminal success or rejection delivery, timeout, cancellation, or local cleanup policy permits removal. The minter must not close immediately after sending a terminal result if that prevents the browser from polling the encrypted message.
 
 ## Error Model
 
