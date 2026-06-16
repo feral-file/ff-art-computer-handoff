@@ -9,3 +9,4 @@ data
 tmp
 *.lmdb
 *.mdb
+server/server

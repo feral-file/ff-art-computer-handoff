@@ -15,7 +15,7 @@ env:
   DOCR_REGISTRY_NAME: feral-file
   DOCR_REGISTRY: registry.digitalocean.com/feral-file
   DOCR_REPOSITORY: apps
-  DOCR_TAG_PREFIX: browser-session-handoff-
+  DOCR_TAG_PREFIX: mint-pairing-broker-
   DOCR_KEEP_IMAGES: "3"
 
 jobs:
@@ -35,9 +35,9 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           if [ -n "${INPUT_VERSION}" ]; then
-            echo "tag=browser-session-handoff-${INPUT_VERSION}" >> "${GITHUB_OUTPUT}"
+            echo "tag=mint-pairing-broker-${INPUT_VERSION}" >> "${GITHUB_OUTPUT}"
           else
-            echo "tag=browser-session-handoff-${GIT_SHA::12}" >> "${GITHUB_OUTPUT}"
+            echo "tag=mint-pairing-broker-${GIT_SHA::12}" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Set up Docker Buildx
@@ -70,7 +70,7 @@ jobs:
           provenance: false
           sbom: false
 
-      - name: Clean up older DOCR tags for browser session handoff
+      - name: Clean up older DOCR tags for mint pairing broker
         if: ${{ success() }}
         continue-on-error: true
         env:

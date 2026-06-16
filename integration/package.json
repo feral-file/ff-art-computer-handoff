@@ -12,14 +12,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@feral-file/art-computer-handoff-js": "file:../clients/session-recipient/js",
-    "@feral-file/art-computer-handoff-server": "file:../server"
+    "@feral-file/mint-pairing-requester-js": "file:../clients/session-recipient/js"
   },
   "devDependencies": {
     "@types/node": "^20.14.11",
-    "@types/qrcode": "^1.5.6",
     "eslint": "^9.7.0",
-    "qrcode": "^1.5.4",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.35.1",

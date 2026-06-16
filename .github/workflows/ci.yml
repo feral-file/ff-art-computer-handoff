@@ -10,18 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: test -z "$(gofmt -l .)"
         working-directory: server
-      - run: npm run lint
+      - run: go test ./...
         working-directory: server
-      - run: npm run typecheck
-        working-directory: server
-      - run: npm test
+      - run: go build ./...
         working-directory: server
 
   session-recipient:
@@ -42,22 +39,18 @@ jobs:
       - run: npm test
         working-directory: clients/session-recipient/js
 
-  flutter:
+  ephemeral-token-minter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-go@v5
         with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-        working-directory: clients/ff-controller/flutter
-      - run: dart format --set-exit-if-changed .
-        working-directory: clients/ff-controller/flutter
-      - run: flutter analyze
-        working-directory: clients/ff-controller/flutter
-      - run: flutter test
-        working-directory: clients/ff-controller/flutter
+          go-version-file: clients/ephemeral-token-minter/go/go.mod
+          cache-dependency-path: clients/ephemeral-token-minter/go/go.mod
+      - run: test -z "$(gofmt -l .)"
+        working-directory: clients/ephemeral-token-minter/go
+      - run: go test ./...
+        working-directory: clients/ephemeral-token-minter/go
 
   integration:
     runs-on: ubuntu-latest
@@ -66,8 +59,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-        working-directory: server
       - run: npm ci
         working-directory: clients/session-recipient/js
       - run: npm ci
@@ -90,4 +81,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: ff-browser-session-handoff:ci
+          tags: mint-pairing-broker:ci

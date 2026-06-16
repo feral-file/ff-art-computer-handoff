@@ -53,6 +53,12 @@ Each encrypted message should bind stable public fields as AAD:
 }
 ```
 
+For messages encrypted before the broker has assigned a sequence number, clients
+use `seq: 0` in the AAD and validate the broker-assigned `seq` from the stored
+envelope separately. Browser-to-minter envelopes must also include the sender's
+P-256 public JWK as public metadata so the minter can derive the ECDH shared
+secret; this public key is not application plaintext.
+
 The encrypted plaintext may contain message types such as:
 
 - `mint_request`
@@ -189,6 +195,7 @@ Request:
   "sender": "browser",
   "recipient": "minter",
   "algorithm": "P256-HKDF-SHA256-AES-256-GCM",
+  "senderPublicKeyJwk": {},
   "aad": "...",
   "nonce": "...",
   "ciphertext": "..."
@@ -230,6 +237,7 @@ Response:
       "sender": "minter",
       "recipient": "browser",
       "algorithm": "P256-HKDF-SHA256-AES-256-GCM",
+      "senderPublicKeyJwk": {},
       "aad": "...",
       "nonce": "...",
       "ciphertext": "..."

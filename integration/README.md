@@ -13,6 +13,9 @@ npm run typecheck
 npm test
 ```
 
+`npm test` builds the Go broker Docker image, launches it with an isolated
+temporary `/data` volume, and verifies the mint pairing sequence over HTTP.
+
 ## Expectations
 
 - Tests use isolated temporary storage.

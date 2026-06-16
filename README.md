@@ -8,9 +8,9 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 
 ## Components
 
-- [server](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/server/README.md): current Node.js/Fastify prototype; target Mint Pairing Broker should be Go with bbolt storage.
+- [server](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/server/README.md): Go Mint Pairing Broker backed by durable bbolt storage.
 - [clients/session-recipient/js](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites.
-- `clients/ephemeral-token-minter/go` (planned): Go library used by FF1 `feral-controld` to create mint receivers, coordinate approval through `ff-relayer`, and mint browser sessions.
+- [clients/ephemeral-token-minter/go](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/clients/ephemeral-token-minter/go/README.md): Go library used by FF1 `feral-controld` to create mint receivers, coordinate approval through injected `ff-relayer`/approval integrations, and return encrypted mint results.
 - [integration](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/integration/README.md): Vitest integration tests.
 - `.github/workflows/ci.yml`: CI for server, NFT display website requester library, token minter, and integration tests after the implementation is updated.
 - `Dockerfile`: Production image for the Mint Pairing Broker.
@@ -21,25 +21,24 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 - [Server design](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/server-design.md)
 - [API design](/Users/anhnguyen/Documents/projects/ff-art-computer-handoff/docs/api-design.md)
 
-Implementation status: the code still contains the earlier Flutter controller library and earlier handoff-shaped browser APIs. Those are legacy for the new design and should be removed or replaced in a follow-up code change; this update only changes documentation.
+Implementation status: the Go broker, Go ephemeral token minter library, browser requester library, Docker image, and Docker-backed integration test have replaced the earlier handoff prototype surfaces.
 
 ## Commands
 
 ```sh
-cd server && npm ci && npm run lint && npm run typecheck && npm test
+cd server && test -z "$(gofmt -l .)" && go test ./... && go build ./...
 cd clients/session-recipient/js && npm ci && npm run lint && npm run typecheck && npm test
-# Planned after Go minter is added:
-# cd clients/ephemeral-token-minter/go && go test ./...
-cd integration && npm ci && npm run lint && npm run typecheck && npm test
+cd clients/ephemeral-token-minter/go && test -z "$(gofmt -l .)" && go test ./...
+cd integration && npm ci && npm run sample:build && npm run lint && npm run typecheck && npm test
 ```
 
 ## Deployment
 
-The target Docker image runs the Mint Pairing Broker. It listens on `PORT`, defaults to `3000`, and stores bbolt state at `DB_PATH`, expected to be a file path such as `/data/mint-pairing.db`. Mount `/data` as durable storage in persistent environments.
+The Docker image runs the Mint Pairing Broker. It listens on `ADDR`, defaults to `:8080`, and stores bbolt state at `BROKER_DB_PATH`, expected to be a file path such as `/data/mint-pairing.db`. Mount `/data` as durable storage in persistent environments.
 
 ```sh
 docker build -t ff-mint-pairing-broker:local .
-docker run --rm -p 3000:3000 -v ff-mint-pairing-broker-data:/data ff-mint-pairing-broker:local
+docker run --rm -p 8080:8080 -v ff-mint-pairing-broker-data:/data ff-mint-pairing-broker:local
 ```
 
 The manual GitHub Actions workflow `.github/workflows/build-image.yml` publishes to DigitalOcean Container Registry under `registry.digitalocean.com/feral-file/apps`. It requires the `DIGITALOCEAN_DOCR_TOKEN` secret in the production environment.
