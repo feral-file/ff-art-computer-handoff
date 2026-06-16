@@ -16,6 +16,8 @@ jobs:
           cache-dependency-path: server/go.sum
       - run: test -z "$(gofmt -l .)"
         working-directory: server
+      - run: go vet ./...
+        working-directory: server
       - run: go test ./...
         working-directory: server
       - run: go build ./...
@@ -48,6 +50,8 @@ jobs:
           go-version-file: clients/ephemeral-token-minter/go/go.mod
           cache-dependency-path: clients/ephemeral-token-minter/go/go.mod
       - run: test -z "$(gofmt -l .)"
+        working-directory: clients/ephemeral-token-minter/go
+      - run: go vet ./...
         working-directory: clients/ephemeral-token-minter/go
       - run: go test ./...
         working-directory: clients/ephemeral-token-minter/go

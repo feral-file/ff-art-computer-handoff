@@ -9,7 +9,8 @@ It creates temporary channels through the Mint Pairing Broker, exposes QR/deep-l
 ## Commands
 
 ```sh
-gofmt -w .
+test -z "$(gofmt -l .)"
+go vet ./...
 go test ./...
 ```
 

@@ -15,6 +15,7 @@ The package deliberately does not implement `ff-controller` approval behavior or
 ## Test
 
 ```sh
-gofmt -w .
+test -z "$(gofmt -l .)"
+go vet ./...
 go test ./...
 ```
