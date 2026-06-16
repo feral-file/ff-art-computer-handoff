@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -65,6 +65,14 @@ function docker(args: string[]): string {
   }).trim();
 }
 
+function dockerOptional(args: string[]): string | undefined {
+  try {
+    return docker(args);
+  } catch {
+    return undefined;
+  }
+}
+
 async function waitForHealth(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 15_000;
   let lastError: unknown;
@@ -83,8 +91,24 @@ async function waitForHealth(baseUrl: string): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error("broker container did not become healthy");
 }
 
+async function waitForPublishedPort(containerId: string): Promise<string> {
+  const deadline = Date.now() + 10_000;
+  let lastLogs = "";
+  while (Date.now() < deadline) {
+    const portMapping = dockerOptional(["port", containerId, "8080/tcp"]);
+    const port = portMapping?.split(":").at(-1);
+    if (port !== undefined && port.length > 0) {
+      return port;
+    }
+    lastLogs = dockerOptional(["logs", containerId]) ?? lastLogs;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  throw new Error(`broker container did not publish 8080/tcp. logs:\n${lastLogs}`);
+}
+
 async function startBroker(dataDir?: string): Promise<DockerBroker> {
   const brokerDataDir = dataDir ?? mkdtempSync(join(tmpdir(), "mint-pairing-broker-"));
+  chmodSync(brokerDataDir, 0o777);
   tempDirs.push(brokerDataDir);
   const containerId = docker([
     "run",
@@ -97,11 +121,7 @@ async function startBroker(dataDir?: string): Promise<DockerBroker> {
     imageTag
   ]);
   containers.push(containerId);
-  const portMapping = docker(["port", containerId, "8080/tcp"]);
-  const port = portMapping.split(":").at(-1);
-  if (port === undefined || port.length === 0) {
-    throw new Error(`unexpected docker port output: ${portMapping}`);
-  }
+  const port = await waitForPublishedPort(containerId);
   const broker = {
     baseUrl: `http://127.0.0.1:${port}`,
     containerId,
@@ -112,7 +132,7 @@ async function startBroker(dataDir?: string): Promise<DockerBroker> {
 }
 
 function stopBroker(containerId: string): void {
-  docker(["stop", containerId]);
+  dockerOptional(["stop", containerId]);
   const index = containers.indexOf(containerId);
   if (index >= 0) {
     containers.splice(index, 1);
