@@ -17,6 +17,7 @@ import (
 )
 
 var testPublicJWK = json.RawMessage(`{"kty":"EC","crv":"P-256","x":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","y":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+var alternatePublicJWK = json.RawMessage(`{"kty":"EC","crv":"P-256","x":"ccccccccccccccccccccccccccccccccccccccccccc","y":"ddddddddddddddddddddddddddddddddddddddddddd"}`)
 
 type testEnv struct {
 	broker *Broker
@@ -137,19 +138,55 @@ func TestMessageAuth(t *testing.T) {
 	}
 }
 
+func TestBrowserAppendSenderPublicKeyMustMatchJoinKey(t *testing.T) {
+	env := newTestEnv(t)
+	created := createChannel(t, env, false)
+	joined := joinWithPairingToken(t, env, created)
+
+	endpoint := env.server.URL + "/v1/channels/" + created.ChannelID + "/messages"
+	status, errCode := postJSON(t, endpoint, joined.BrowserToken, AppendMessageRequest{
+		MessageID:          "msg_wrong_browser_key",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad",
+		Nonce:              "nonce",
+		Ciphertext:         "ciphertext",
+		SenderPublicKeyJWK: alternatePublicJWK,
+	}, nil)
+	if status != http.StatusBadRequest || errCode != "invalid_request" {
+		t.Fatalf("mismatched browser sender key status/error = %d/%q, want 400/invalid_request", status, errCode)
+	}
+
+	appendResponse := appendMessage(t, env, created.ChannelID, joined.BrowserToken, AppendMessageRequest{
+		MessageID:          "msg_joined_browser_key",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad",
+		Nonce:              "nonce",
+		Ciphertext:         "ciphertext",
+		SenderPublicKeyJWK: testPublicJWK,
+	})
+	if appendResponse.Seq != 1 {
+		t.Fatalf("accepted browser append seq = %d, want 1", appendResponse.Seq)
+	}
+}
+
 func TestAppendAndPollBothDirections(t *testing.T) {
 	env := newTestEnv(t)
 	created := createChannel(t, env, false)
 	joined := joinWithPairingToken(t, env, created)
 
 	browserAppend := appendMessage(t, env, created.ChannelID, joined.BrowserToken, AppendMessageRequest{
-		MessageID:  "msg_browser",
-		Sender:     roleBrowser,
-		Recipient:  roleMinter,
-		Algorithm:  algorithm,
-		AAD:        "aad-browser",
-		Nonce:      "nonce-browser",
-		Ciphertext: "ciphertext-browser",
+		MessageID:          "msg_browser",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad-browser",
+		Nonce:              "nonce-browser",
+		Ciphertext:         "ciphertext-browser",
+		SenderPublicKeyJWK: testPublicJWK,
 	})
 	if browserAppend.Seq != 1 {
 		t.Fatalf("browser append seq = %d, want 1", browserAppend.Seq)
@@ -185,13 +222,14 @@ func TestDuplicateMessageRejected(t *testing.T) {
 	joined := joinWithPairingToken(t, env, created)
 
 	req := AppendMessageRequest{
-		MessageID:  "msg_duplicate",
-		Sender:     roleBrowser,
-		Recipient:  roleMinter,
-		Algorithm:  algorithm,
-		AAD:        "aad",
-		Nonce:      "nonce",
-		Ciphertext: "ciphertext",
+		MessageID:          "msg_duplicate",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad",
+		Nonce:              "nonce",
+		Ciphertext:         "ciphertext",
+		SenderPublicKeyJWK: testPublicJWK,
 	}
 	first := appendMessage(t, env, created.ChannelID, joined.BrowserToken, req)
 	if first.Seq != 1 {
@@ -230,13 +268,14 @@ func TestTTLOnlyExtendsOnAcceptedMessages(t *testing.T) {
 
 	*env.clock = env.clock.Add(2 * time.Second)
 	appendResponse := appendMessage(t, env, created.ChannelID, joined.BrowserToken, AppendMessageRequest{
-		MessageID:  "msg_ttl",
-		Sender:     roleBrowser,
-		Recipient:  roleMinter,
-		Algorithm:  algorithm,
-		AAD:        "aad",
-		Nonce:      "nonce",
-		Ciphertext: "ciphertext",
+		MessageID:          "msg_ttl",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad",
+		Nonce:              "nonce",
+		Ciphertext:         "ciphertext",
+		SenderPublicKeyJWK: testPublicJWK,
 	})
 	expectedAfterAppend := formatTime(env.clock.Add(15 * time.Second))
 	if appendResponse.ExpiresAt != expectedAfterAppend {
@@ -592,13 +631,14 @@ func TestCleanupIgnoresStaleExpiryIndexUntilCurrentExpiry(t *testing.T) {
 
 	*env.clock = env.clock.Add(5 * time.Second)
 	appendResponse := appendMessage(t, env, created.ChannelID, joined.BrowserToken, AppendMessageRequest{
-		MessageID:  "msg_extend_expiry",
-		Sender:     roleBrowser,
-		Recipient:  roleMinter,
-		Algorithm:  algorithm,
-		AAD:        "aad",
-		Nonce:      "nonce",
-		Ciphertext: "ciphertext",
+		MessageID:          "msg_extend_expiry",
+		Sender:             roleBrowser,
+		Recipient:          roleMinter,
+		Algorithm:          algorithm,
+		AAD:                "aad",
+		Nonce:              "nonce",
+		Ciphertext:         "ciphertext",
+		SenderPublicKeyJWK: testPublicJWK,
 	})
 
 	*env.clock = env.clock.Add(11 * time.Second)

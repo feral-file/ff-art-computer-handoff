@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -730,6 +731,10 @@ func (b *Broker) handleAppendMessage(w http.ResponseWriter, r *http.Request, cha
 			status, code = http.StatusUnauthorized, "unauthorized"
 			return nil
 		}
+		if req.Sender == roleBrowser && !equalJSON(req.SenderPublicKeyJWK, record.BrowserPublicKeyJWK) {
+			status, code = http.StatusBadRequest, "invalid_request"
+			return nil
+		}
 		duplicate, err := duplicateMessageExists(messagesBucket, req.Sender, req.MessageID)
 		if err != nil {
 			return err
@@ -1415,6 +1420,18 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+func equalJSON(left, right json.RawMessage) bool {
+	var leftValue any
+	var rightValue any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
 }
 
 func formatTime(t time.Time) string {
