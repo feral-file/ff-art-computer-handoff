@@ -217,6 +217,9 @@
         const castRequest = {
           command: "displayPlaylist",
           request: {
+            intent: {
+              action: "now_display"
+            },
             dp1_call: dp1Payload()
           }
         };
@@ -237,6 +240,24 @@
           const detail = responseText.trim().slice(0, 240);
           throw new Error(`display request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
         }
+        const result = await response.json().catch(() => undefined);
+        if (extractOk(result) === false) {
+          const detail = JSON.stringify(result).slice(0, 240);
+          throw new Error(`FF1 rejected display request${detail ? `: ${detail}` : ""}`);
+        }
+      }
+
+      function extractOk(value) {
+        if (value === null || typeof value !== "object") {
+          return undefined;
+        }
+        if (typeof value.ok === "boolean") {
+          return value.ok;
+        }
+        if ("message" in value) {
+          return extractOk(value.message);
+        }
+        return undefined;
       }
 
       forgetButton.addEventListener("click", () => {

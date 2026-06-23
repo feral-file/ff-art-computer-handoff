@@ -25,6 +25,9 @@ The target sample sends `Authorization: Bearer <token>` to `POST /api/cast` with
 {
   "command": "displayPlaylist",
   "request": {
+    "intent": {
+      "action": "now_display"
+    },
     "dp1_call": {
       "items": []
     }
