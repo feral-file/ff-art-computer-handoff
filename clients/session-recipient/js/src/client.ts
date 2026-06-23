@@ -28,6 +28,15 @@ export type EphemeralBrowserSession = {
   relayerBaseUrl?: string;
 };
 
+export type Dp1Playlist = Record<string, unknown>;
+
+export type DisplayDp1PlaylistOptions = {
+  session: EphemeralBrowserSession;
+  playlist: Dp1Playlist;
+  relayerBaseUrl?: string;
+  fetchImpl?: typeof fetch;
+};
+
 export type TokenStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type TokenStorageOptions =
@@ -127,6 +136,10 @@ async function jsonResponse(response: Response, errorPrefix: string): Promise<un
     throw new Error(`${errorPrefix}: ${String(response.status)}`);
   }
   return response.json() as Promise<unknown>;
+}
+
+function defaultFetch(): typeof fetch {
+  return (input, init) => globalThis.fetch(input, init);
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -307,6 +320,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function extractOk(value: unknown): boolean | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (typeof value["ok"] === "boolean") {
+    return value["ok"];
+  }
+  if ("message" in value) {
+    return extractOk(value["message"]);
+  }
+  return undefined;
+}
+
 async function resolvePairing(input: PairingInput, fetcher: typeof fetch): Promise<ResolvedPairing> {
   if ("qrPayload" in input) {
     const payload = parsePairingQrPayload(input.qrPayload);
@@ -412,7 +438,7 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
 }
 
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
-  const fetcher = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
+  const fetcher = options.fetchImpl ?? defaultFetch();
   const origin = currentOrigin();
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
@@ -492,4 +518,37 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
     await sleep(options.pollIntervalMs ?? 5000);
   }
   throw new Error("poll timed out");
+}
+
+export async function displayDp1Playlist(options: DisplayDp1PlaylistOptions): Promise<void> {
+  const fetcher = options.fetchImpl ?? defaultFetch();
+  const relayerBaseUrl = options.session.relayerBaseUrl ?? options.relayerBaseUrl;
+  if (relayerBaseUrl === undefined || relayerBaseUrl.trim().length === 0) {
+    throw new Error("relayer base URL is required");
+  }
+
+  const response = await fetcher(new URL("/api/cast", normalizeBaseUrl(relayerBaseUrl)), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${options.session.token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      command: "displayPlaylist",
+      request: {
+        intent: {
+          action: "now_display"
+        },
+        dp1_call: options.playlist
+      }
+    })
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("browser session rejected");
+  }
+  const result = await jsonResponse(response, "display request failed");
+  if (extractOk(result) === false) {
+    throw new Error("FF1 rejected display request");
+  }
 }
