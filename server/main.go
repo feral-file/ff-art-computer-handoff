@@ -276,6 +276,17 @@ func (b *Broker) initDB() error {
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	recorder := &statusRecorder{ResponseWriter: w}
+	start := time.Now()
+	b.serveHTTP(recorder, r)
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	log.Printf("broker_http method=%s path=%s status=%d duration_ms=%d remote=%s", r.Method, r.URL.Path, status, time.Since(start).Milliseconds(), remoteHost(r.RemoteAddr))
+}
+
+func (b *Broker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	addCORSHeaders(w)
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -324,6 +335,25 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, http.StatusNotFound, "not_found")
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status == 0 {
+		r.status = status
+	}
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(data []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.ResponseWriter.Write(data)
 }
 
 func (b *Broker) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +477,16 @@ func (b *Broker) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf(
+		"create_channel channel_id=%s short_code_requested=%t short_code_issued=%t short_code=%s short_code_hash=%s expires_at=%s idle_ttl_seconds=%d",
+		logEdge(channelID),
+		req.ShortCodeRequested,
+		shortCode != "",
+		logEdge(shortCode),
+		logHashPrefix(record.ShortCodeHash),
+		record.ExpiresAt,
+		req.IdleTTLSeconds,
+	)
 	writeJSON(w, http.StatusCreated, CreateChannelResponse{
 		ChannelID:    channelID,
 		MinterToken:  minterToken,
@@ -601,6 +641,7 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 	var response ResolvePairingCodeResponse
 	var status int
 	var code string
+	var resolvedChannelID string
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		attemptKey := shortCodeResolveAttemptKey(shortCodeHash)
 		aggregateAttemptKey := shortCodeResolveAggregateAttemptKey(resolveSourceKey)
@@ -628,6 +669,7 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 			return nil
 		}
 		channelID := string(channelIDBytes)
+		resolvedChannelID = channelID
 		_, metaBucket, _, _, ok := channelBuckets(tx, channelID)
 		if !ok {
 			status, code = http.StatusNotFound, "not_found"
@@ -665,9 +707,26 @@ func (b *Broker) handleResolvePairingCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if code != "" {
+		log.Printf(
+			"resolve_pairing_code short_code=%s short_code_hash=%s status=%d outcome=%s channel_id=%s remote=%s",
+			logEdge(req.ShortCode),
+			logHashPrefix(shortCodeHash),
+			status,
+			code,
+			logEdge(resolvedChannelID),
+			remoteHost(r.RemoteAddr),
+		)
 		writeError(w, status, code)
 		return
 	}
+	log.Printf(
+		"resolve_pairing_code short_code=%s short_code_hash=%s status=%d outcome=resolved channel_id=%s remote=%s",
+		logEdge(req.ShortCode),
+		logHashPrefix(shortCodeHash),
+		http.StatusOK,
+		logEdge(response.ChannelID),
+		remoteHost(r.RemoteAddr),
+	)
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -871,6 +930,7 @@ func (b *Broker) handleCloseChannel(w http.ResponseWriter, r *http.Request, chan
 	now := b.now().UTC()
 	var status int
 	var code string
+	var hadShortCode bool
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		_, metaBucket, participantsBucket, _, ok := channelBuckets(tx, channelID)
 		if !ok {
@@ -894,6 +954,7 @@ func (b *Broker) handleCloseChannel(w http.ResponseWriter, r *http.Request, chan
 			return err
 		}
 		if record.ShortCodeHash != "" {
+			hadShortCode = true
 			if err := tx.Bucket([]byte(bucketShortCodes)).Delete([]byte(record.ShortCodeHash)); err != nil {
 				return err
 			}
@@ -905,9 +966,11 @@ func (b *Broker) handleCloseChannel(w http.ResponseWriter, r *http.Request, chan
 		return
 	}
 	if code != "" {
+		log.Printf("close_channel channel_id=%s status=%d outcome=%s had_short_code=%t", logEdge(channelID), status, code, hadShortCode)
 		writeError(w, status, code)
 		return
 	}
+	log.Printf("close_channel channel_id=%s status=%d outcome=closed had_short_code=%t", logEdge(channelID), http.StatusOK, hadShortCode)
 	writeJSON(w, http.StatusOK, struct {
 		Status string `json:"status"`
 	}{Status: statusClosed})
@@ -1388,6 +1451,34 @@ func shortCodeResolveSourceKey(remoteAddr string) string {
 		source = "unknown"
 	}
 	return hashString(source)
+}
+
+func remoteHost(remoteAddr string) string {
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
+	}
+	if remoteAddr == "" {
+		return "unknown"
+	}
+	return remoteAddr
+}
+
+func logEdge(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 3 {
+		return value
+	}
+	return value[:3] + "..." + value[len(value)-3:]
+}
+
+func logHashPrefix(value string) string {
+	if len(value) <= 12 {
+		return value
+	}
+	return value[:12]
 }
 
 func shortCodeJoinAttemptKey(channelID string) string {

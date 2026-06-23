@@ -12,7 +12,7 @@
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-normal text-red-400">NFT display website sample</p>
-            <h1 class="mt-2 text-3xl font-semibold tracking-normal text-zinc-50">FF1 DP1 mint pairing</h1>
+            <h1 class="mt-2 text-3xl font-semibold tracking-normal text-zinc-50">FF1 DP1 pairing code</h1>
           </div>
           <button
             id="play-button"
@@ -29,7 +29,7 @@
             <input
               id="broker-url"
               class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-sm text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-              value="http://127.0.0.1:8080"
+              value="https://handoff.feralfile.com"
               autocomplete="off"
             />
           </label>
@@ -44,38 +44,47 @@
           </label>
         </div>
 
-        <label class="block">
-          <span class="mb-2 block text-sm font-semibold text-zinc-300">DP1 feed URL</span>
-          <input
-            id="feed-url"
-            class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-sm text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-            placeholder="https://nft.example/dp1/feed.json"
+        <label class="flex min-h-[220px] flex-col">
+          <span class="mb-2 block text-sm font-semibold text-zinc-300">DP1 payload</span>
+          <textarea
+            id="dp1-payload"
+            class="min-h-[180px] flex-1 resize-y rounded-md border border-zinc-800 bg-zinc-900 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
+            placeholder='{"version":"1.0","items":[]}'
+            spellcheck="false"
             autocomplete="off"
             required
-          />
+          ></textarea>
         </label>
 
         <div class="grid flex-1 grid-cols-2 gap-4 max-md:grid-cols-1">
-          <label class="flex min-h-[360px] flex-col">
-            <span class="mb-2 block text-sm font-semibold text-zinc-300">Pairing QR payload JSON</span>
-            <textarea
-              id="qr-payload"
-              class="min-h-[320px] flex-1 resize-none rounded-md border border-zinc-800 bg-zinc-900 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-              spellcheck="false"
-              autocomplete="off"
-              placeholder='{"v":1,"type":"ff-mint-pairing","brokerBaseUrl":"...","channelId":"ch_...","pairingToken":"pt_..."}'
-            ></textarea>
-          </label>
-          <label class="flex min-h-[360px] flex-col">
-            <span class="mb-2 block text-sm font-semibold text-zinc-300">Short code</span>
-            <input
-              id="short-code"
-              class="h-11 rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-lg text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-              placeholder="123456"
-              inputmode="numeric"
-              autocomplete="off"
-            />
-            <div class="mt-4 flex-1 rounded-md border border-zinc-800 bg-zinc-900 p-4">
+          <div class="flex min-h-[360px] flex-col gap-4">
+            <label class="block">
+              <span class="mb-2 block text-sm font-semibold text-zinc-300">Pairing code</span>
+              <input
+                id="short-code"
+                class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-lg text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
+                placeholder="123456"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+              />
+            </label>
+            <details class="rounded-md border border-zinc-800 bg-zinc-900 p-4">
+              <summary class="cursor-pointer text-sm font-semibold text-zinc-300">QR/deep-link payload</summary>
+              <label class="mt-4 block">
+                <span class="mb-2 block text-sm font-semibold text-zinc-400">Payload JSON or URL</span>
+                <textarea
+                  id="qr-payload"
+                  class="min-h-[220px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder='{"v":1,"type":"ff-mint-pairing","brokerBaseUrl":"...","channelId":"ch_...","pairingToken":"pt_..."}'
+                ></textarea>
+              </label>
+            </details>
+          </div>
+          <div class="flex min-h-[360px] flex-col">
+            <span class="mb-2 block text-sm font-semibold text-zinc-300">Browser session</span>
+            <div class="flex-1 rounded-md border border-zinc-800 bg-zinc-900 p-4">
               <span class="block text-xs font-semibold uppercase tracking-normal text-zinc-500">Session</span>
               <strong id="session-status" class="mt-2 block text-lg text-zinc-50">Checking</strong>
               <button
@@ -86,7 +95,7 @@
                 Forget
               </button>
             </div>
-          </label>
+          </div>
         </div>
       </form>
 
@@ -107,7 +116,7 @@
       const form = mustElement("play-form");
       const brokerUrlInput = mustElement("broker-url");
       const relayerUrlInput = mustElement("relayer-url");
-      const feedUrlInput = mustElement("feed-url");
+      const dp1PayloadInput = mustElement("dp1-payload");
       const qrPayloadInput = mustElement("qr-payload");
       const shortCodeInput = mustElement("short-code");
       const playButton = mustElement("play-button");
@@ -125,13 +134,29 @@
 
       function setBusy(isBusy) {
         playButton.disabled = isBusy;
-        feedUrlInput.disabled = isBusy;
+        brokerUrlInput.disabled = isBusy;
+        relayerUrlInput.disabled = isBusy;
+        dp1PayloadInput.disabled = isBusy;
         qrPayloadInput.disabled = isBusy;
         shortCodeInput.disabled = isBusy;
       }
 
       function setMessage(value) {
         message.textContent = value;
+      }
+
+      function userFacingError(error) {
+        const raw = error instanceof Error ? error.message : "request failed";
+        if (raw === "short-code resolution failed: 404") {
+          return "Pairing code not found on this broker. Start a new FF1 pairing session or check the Broker URL.";
+        }
+        if (raw === "short-code resolution failed: 410") {
+          return "Pairing code expired. Start a new FF1 pairing session.";
+        }
+        if (raw === "channel join failed: 401") {
+          return "Pairing code was already used. Start a new FF1 pairing session.";
+        }
+        return raw;
       }
 
       function storageKey() {
@@ -152,11 +177,11 @@
       function pairingInput() {
         const qrPayload = qrPayloadInput.value.trim();
         if (qrPayload.length > 0) {
-          return { qrPayload: JSON.parse(qrPayload) };
+          return { qrPayload };
         }
         const shortCode = shortCodeInput.value.trim();
         if (shortCode.length === 0) {
-          throw new Error("pairing material required");
+          throw new Error("pairing code or QR payload required");
         }
         return { brokerBaseUrl: brokerUrlInput.value.trim(), shortCode };
       }
@@ -178,8 +203,15 @@
         return session;
       }
 
-      async function playDp1Feed(session) {
-        const feedUrl = new URL(feedUrlInput.value.trim()).toString();
+      function dp1Payload() {
+        try {
+          return JSON.parse(dp1PayloadInput.value.trim());
+        } catch {
+          throw new Error("DP1 payload must be valid JSON");
+        }
+      }
+
+      async function playDp1Payload(session) {
         const relayerBaseUrl = session.relayerBaseUrl ?? relayerUrlInput.value.trim();
         const castUrl = new URL("/api/cast", relayerBaseUrl);
         const response = await fetch(castUrl, {
@@ -188,7 +220,7 @@
             authorization: `Bearer ${session.token}`,
             "content-type": "application/json"
           },
-          body: JSON.stringify({ feedUrl })
+          body: JSON.stringify(dp1Payload())
         });
         if (response.status === 401 || response.status === 403) {
           clearStoredSession();
@@ -210,11 +242,11 @@
           setBusy(true);
           try {
             const session = currentSession() ?? await pairSession();
-            setMessage("Sending DP1 feed URL to FF1.");
-            await playDp1Feed(session);
-            setMessage("DP1 feed URL sent.");
+            setMessage("Sending DP1 payload to FF1.");
+            await playDp1Payload(session);
+            setMessage("DP1 payload sent.");
           } catch (error) {
-            setMessage(error instanceof Error ? error.message : "request failed");
+            setMessage(userFacingError(error));
             sessionStatus.textContent = currentSession() === undefined ? "Not paired" : "Paired";
           } finally {
             setBusy(false);
