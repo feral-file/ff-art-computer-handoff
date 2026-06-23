@@ -2,20 +2,22 @@
 
 `clients/session-recipient/js/` is the TypeScript implementation for browser clients that request an ephemeral browser session from the Go token minter embedded in FF1 `feral-controld`.
 
-Browser runtimes check `localStorage` under the current website origin for an existing ephemeral browser session. If one is missing or invalid, `requestEphemeralSession` joins a Mint Pairing Broker channel using a QR/deep-link payload or short code, sends an end-to-end encrypted `mint_request` with the origin derived from `window.location.origin` and browser/client metadata, polls for an encrypted minter result, validates the channel binding, stores the recovered token in origin-scoped storage when storage is enabled, and returns the session metadata. Use the returned token only when requesting DP1 playlist display through `ff-relayer`. See [Sequential Flow](../../../docs/sequential-flow.md) for the end-to-end model.
+Browser runtimes check `localStorage` under the current website origin for an existing ephemeral browser session. If one is missing or invalid, `requestEphemeralSession` joins a Mint Pairing Broker channel using a QR/deep-link payload or short code, sends an end-to-end encrypted `mint_request` with the origin derived from `window.location.origin` and browser/client metadata, polls for an encrypted minter result, validates the channel binding, stores the recovered token in origin-scoped storage when storage is enabled, and returns the session metadata. `displayDp1Playlist` uses that session to request DP1 playlist display through `ff-relayer` without exposing the relayer command envelope to website code. See [Sequential Flow](../../../docs/sequential-flow.md) for the end-to-end model.
 
 ```ts
-import { requestEphemeralSession } from "@feral-file/mint-pairing-requester-js";
+import {
+  displayDp1Playlist,
+  requestEphemeralSession
+} from "@feral-file/mint-pairing-requester-js";
 
 const session = await requestEphemeralSession({
   pairing: { qrPayload },
   browserInfo: { name: "Chrome", label: "Gallery wall browser" }
 });
 
-await fetch(`${session.relayerBaseUrl}/api/cast`, {
-  method: "POST",
-  headers: { authorization: `Bearer ${session.token}` },
-  body: JSON.stringify({ feedUrl })
+await displayDp1Playlist({
+  session,
+  playlist: dp1Playlist
 });
 ```
 

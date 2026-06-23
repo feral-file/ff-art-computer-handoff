@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  displayDp1Playlist,
   ephemeralBrowserSessionStorageKey,
   readStoredEphemeralBrowserSession,
   requestEphemeralSession,
@@ -15,9 +16,11 @@ type RequestRecord = {
 
 const testOrigin = "https://nft.example";
 let previousLocationDescriptor: PropertyDescriptor | undefined;
+let previousFetchDescriptor: PropertyDescriptor | undefined;
 
 beforeEach(() => {
   previousLocationDescriptor = Object.getOwnPropertyDescriptor(globalThis, "location");
+  previousFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
   Object.defineProperty(globalThis, "location", {
     configurable: true,
     value: { origin: testOrigin }
@@ -27,9 +30,14 @@ beforeEach(() => {
 afterEach(() => {
   if (previousLocationDescriptor === undefined) {
     Reflect.deleteProperty(globalThis, "location");
-    return;
+  } else {
+    Object.defineProperty(globalThis, "location", previousLocationDescriptor);
   }
-  Object.defineProperty(globalThis, "location", previousLocationDescriptor);
+  if (previousFetchDescriptor === undefined) {
+    Reflect.deleteProperty(globalThis, "fetch");
+  } else {
+    Object.defineProperty(globalThis, "fetch", previousFetchDescriptor);
+  }
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -51,6 +59,11 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
     return input.toString();
   }
   return input.url;
+}
+
+function authorizationHeader(init: RequestInit | undefined): string | null {
+  const headers = new Headers(init?.headers);
+  return headers.get("authorization");
 }
 
 function memoryStorage(): TokenStorage & { entries: Map<string, string> } {
@@ -132,6 +145,65 @@ async function createRejectionMessage(input: {
 }
 
 describe("requestEphemeralSession", () => {
+  it("calls the default global fetch with the global receiver", async () => {
+    const minterKeyPair = await generateBrowserKeyPair();
+    const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);
+    let browserPublicKeyJwk: JsonWebKey | undefined;
+    let requestMessageId = "";
+    const fetchImpl = vi.fn(async function (this: typeof globalThis, input: Parameters<typeof fetch>[0], init?: RequestInit) {
+      expect(this).toBe(globalThis);
+      const url = requestUrl(input);
+      if (url.endsWith("/v1/channels/ch_123/join")) {
+        browserPublicKeyJwk = requestBody(init)["browserPublicKeyJwk"] as JsonWebKey;
+        return jsonResponse({
+          channelId: "ch_123",
+          browserToken: "bt_123",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk,
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          nextSeq: 1
+        });
+      }
+      if (url.endsWith("/v1/channels/ch_123/messages") && init?.method === "POST") {
+        requestMessageId = requestBody(init)["messageId"] as string;
+        return jsonResponse({ channelId: "ch_123", seq: 1, expiresAt: "2030-01-01T00:00:00.000Z" });
+      }
+      if (url.includes("/v1/channels/ch_123/messages?")) {
+        expect(browserPublicKeyJwk).toBeDefined();
+        return createSuccessMessage({
+          minterPrivateKey: minterKeyPair.privateKey,
+          browserPublicKeyJwk: browserPublicKeyJwk ?? {},
+          requestMessageId
+        });
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: fetchImpl
+    });
+
+    const session = await requestEphemeralSession({
+      pairing: {
+        qrPayload: {
+          v: 1,
+          type: "ff-mint-pairing",
+          brokerBaseUrl: "https://pairing.example",
+          channelId: "ch_123",
+          pairingToken: "pt_123",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk
+        }
+      },
+      storage: false,
+      pollIntervalMs: 1
+    });
+
+    expect(session.sessionId).toBe("sess_123");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("joins from a QR payload, polls, returns a token result, and stores by origin", async () => {
     const minterKeyPair = await generateBrowserKeyPair();
     const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);
@@ -493,5 +565,156 @@ describe("requestEphemeralSession", () => {
       pollIntervalMs: 1,
       fetchImpl
     })).rejects.not.toThrow(rawToken);
+  });
+});
+
+describe("displayDp1Playlist", () => {
+  it("wraps a DP1 playlist in the FF1 display command envelope", async () => {
+    const fetchImpl = vi.fn<typeof fetch>((_input, init) => {
+      expect(init?.method).toBe("POST");
+      expect(authorizationHeader(init)).toBe("Bearer browser-session-token");
+      expect(requestBody(init)).toEqual({
+        command: "displayPlaylist",
+        request: {
+          intent: {
+            action: "now_display"
+          },
+          dp1_call: {
+            dpVersion: "1.1.0",
+            title: "Browser Playlist",
+            items: []
+          }
+        }
+      });
+      return Promise.resolve(jsonResponse({ message: { message: { ok: true } } }));
+    });
+
+    await displayDp1Playlist({
+      session: {
+        token: "browser-session-token",
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        relayerBaseUrl: "https://relayer.example/root/"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Browser Playlist",
+        items: []
+      },
+      fetchImpl
+    });
+
+    expect(requestUrl(fetchImpl.mock.calls[0]?.[0] ?? "")).toBe("https://relayer.example/api/cast");
+  });
+
+  it("uses the explicit relayer URL when the session does not include one", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({ message: { ok: true } })));
+
+    await displayDp1Playlist({
+      session: {
+        token: "browser-session-token",
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Browser Playlist",
+        items: []
+      },
+      relayerBaseUrl: "https://fallback-relayer.example",
+      fetchImpl
+    });
+
+    expect(requestUrl(fetchImpl.mock.calls[0]?.[0] ?? "")).toBe("https://fallback-relayer.example/api/cast");
+  });
+
+  it("rejects a browser session rejected by the relayer without leaking the token", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({ error: "nope" }, 401)));
+    const rawToken = "super-secret-browser-session-token";
+
+    await expect(displayDp1Playlist({
+      session: {
+        token: rawToken,
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        relayerBaseUrl: "https://relayer.example"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Browser Playlist",
+        items: []
+      },
+      fetchImpl
+    })).rejects.not.toThrow(rawToken);
+    await expect(displayDp1Playlist({
+      session: {
+        token: rawToken,
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        relayerBaseUrl: "https://relayer.example"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Browser Playlist",
+        items: []
+      },
+      fetchImpl
+    })).rejects.toThrow("browser session rejected");
+  });
+
+  it("rejects an FF1-level display failure without echoing playlist content", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({
+      message: {
+        message: {
+          ok: false,
+          playlistTitle: "Private Playlist"
+        }
+      }
+    })));
+
+    await expect(displayDp1Playlist({
+      session: {
+        token: "browser-session-token",
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        relayerBaseUrl: "https://relayer.example"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Private Playlist",
+        items: []
+      },
+      fetchImpl
+    })).rejects.toThrow("FF1 rejected display request");
+    await expect(displayDp1Playlist({
+      session: {
+        token: "browser-session-token",
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        relayerBaseUrl: "https://relayer.example"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Private Playlist",
+        items: []
+      },
+      fetchImpl
+    })).rejects.not.toThrow("Private Playlist");
+  });
+
+  it("requires a relayer URL", async () => {
+    await expect(displayDp1Playlist({
+      session: {
+        token: "browser-session-token",
+        sessionId: "sess_123",
+        expiresAt: "2030-01-01T00:00:00.000Z"
+      },
+      playlist: {
+        dpVersion: "1.1.0",
+        title: "Browser Playlist",
+        items: []
+      },
+      relayerBaseUrl: " "
+    })).rejects.toThrow("relayer base URL is required");
   });
 });
