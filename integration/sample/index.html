@@ -214,20 +214,28 @@
       async function playDp1Payload(session) {
         const relayerBaseUrl = session.relayerBaseUrl ?? relayerUrlInput.value.trim();
         const castUrl = new URL("/api/cast", relayerBaseUrl);
+        const castRequest = {
+          command: "displayPlaylist",
+          request: {
+            dp1_call: dp1Payload()
+          }
+        };
         const response = await fetch(castUrl, {
           method: "POST",
           headers: {
             authorization: `Bearer ${session.token}`,
             "content-type": "application/json"
           },
-          body: JSON.stringify(dp1Payload())
+          body: JSON.stringify(castRequest)
         });
         if (response.status === 401 || response.status === 403) {
           clearStoredSession();
           throw new Error("browser session rejected");
         }
         if (!response.ok) {
-          throw new Error(`display request failed: ${response.status}`);
+          const responseText = await response.text().catch(() => "");
+          const detail = responseText.trim().slice(0, 240);
+          throw new Error(`display request failed: ${response.status}${detail ? ` ${detail}` : ""}`);
         }
       }
 
