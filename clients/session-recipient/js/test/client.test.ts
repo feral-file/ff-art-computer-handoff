@@ -15,9 +15,11 @@ type RequestRecord = {
 
 const testOrigin = "https://nft.example";
 let previousLocationDescriptor: PropertyDescriptor | undefined;
+let previousFetchDescriptor: PropertyDescriptor | undefined;
 
 beforeEach(() => {
   previousLocationDescriptor = Object.getOwnPropertyDescriptor(globalThis, "location");
+  previousFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
   Object.defineProperty(globalThis, "location", {
     configurable: true,
     value: { origin: testOrigin }
@@ -27,9 +29,14 @@ beforeEach(() => {
 afterEach(() => {
   if (previousLocationDescriptor === undefined) {
     Reflect.deleteProperty(globalThis, "location");
-    return;
+  } else {
+    Object.defineProperty(globalThis, "location", previousLocationDescriptor);
   }
-  Object.defineProperty(globalThis, "location", previousLocationDescriptor);
+  if (previousFetchDescriptor === undefined) {
+    Reflect.deleteProperty(globalThis, "fetch");
+  } else {
+    Object.defineProperty(globalThis, "fetch", previousFetchDescriptor);
+  }
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -132,6 +139,65 @@ async function createRejectionMessage(input: {
 }
 
 describe("requestEphemeralSession", () => {
+  it("calls the default global fetch with the global receiver", async () => {
+    const minterKeyPair = await generateBrowserKeyPair();
+    const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);
+    let browserPublicKeyJwk: JsonWebKey | undefined;
+    let requestMessageId = "";
+    const fetchImpl = vi.fn(async function (this: typeof globalThis, input: Parameters<typeof fetch>[0], init?: RequestInit) {
+      expect(this).toBe(globalThis);
+      const url = requestUrl(input);
+      if (url.endsWith("/v1/channels/ch_123/join")) {
+        browserPublicKeyJwk = requestBody(init)["browserPublicKeyJwk"] as JsonWebKey;
+        return jsonResponse({
+          channelId: "ch_123",
+          browserToken: "bt_123",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk,
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          nextSeq: 1
+        });
+      }
+      if (url.endsWith("/v1/channels/ch_123/messages") && init?.method === "POST") {
+        requestMessageId = requestBody(init)["messageId"] as string;
+        return jsonResponse({ channelId: "ch_123", seq: 1, expiresAt: "2030-01-01T00:00:00.000Z" });
+      }
+      if (url.includes("/v1/channels/ch_123/messages?")) {
+        expect(browserPublicKeyJwk).toBeDefined();
+        return createSuccessMessage({
+          minterPrivateKey: minterKeyPair.privateKey,
+          browserPublicKeyJwk: browserPublicKeyJwk ?? {},
+          requestMessageId
+        });
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: fetchImpl
+    });
+
+    const session = await requestEphemeralSession({
+      pairing: {
+        qrPayload: {
+          v: 1,
+          type: "ff-mint-pairing",
+          brokerBaseUrl: "https://pairing.example",
+          channelId: "ch_123",
+          pairingToken: "pt_123",
+          expiresAt: "2030-01-01T00:00:00.000Z",
+          algorithm: "P256-HKDF-SHA256-AES-256-GCM",
+          minterPublicKeyJwk
+        }
+      },
+      storage: false,
+      pollIntervalMs: 1
+    });
+
+    expect(session.sessionId).toBe("sess_123");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("joins from a QR payload, polls, returns a token result, and stores by origin", async () => {
     const minterKeyPair = await generateBrowserKeyPair();
     const minterPublicKeyJwk = await exportPublicJwk(minterKeyPair.publicKey);

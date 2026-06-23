@@ -412,7 +412,7 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
 }
 
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
-  const fetcher = options.fetchImpl ?? fetch;
+  const fetcher = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
   const origin = currentOrigin();
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
