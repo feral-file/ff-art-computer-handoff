@@ -6,49 +6,34 @@
     <title>FF1 DP1 Mint Pairing Sample</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   </head>
-  <body class="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+  <body class="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
     <main class="grid min-h-screen grid-cols-[minmax(0,1fr)_360px] max-lg:grid-cols-1">
-      <form id="play-form" class="flex min-h-screen flex-col gap-5 border-r border-zinc-800 p-5 max-lg:border-r-0">
+      <section class="flex min-h-screen flex-col gap-5 border-r border-neutral-800 p-5 max-lg:border-r-0">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p class="text-xs font-semibold uppercase tracking-normal text-red-400">NFT display website sample</p>
-            <h1 class="mt-2 text-3xl font-semibold tracking-normal text-zinc-50">FF1 DP1 pairing code</h1>
+            <h1 class="mt-2 text-3xl font-semibold tracking-normal text-neutral-50">FF1 DP1 playback</h1>
           </div>
-          <button
-            id="play-button"
-            type="submit"
-            class="h-11 rounded-md bg-red-500 px-5 text-sm font-bold text-white transition hover:bg-red-400 disabled:cursor-wait disabled:bg-zinc-700 disabled:text-zinc-400"
-          >
-            Play on FF1
-          </button>
+          <div id="play-button-container"></div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
+        <div class="grid max-w-2xl gap-4">
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-zinc-300">Broker URL</span>
+            <span class="mb-2 block text-sm font-semibold text-neutral-300">Broker URL</span>
             <input
               id="broker-url"
-              class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-sm text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
+              class="h-11 w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 font-mono text-sm text-neutral-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
               value="https://handoff.feralfile.com"
               autocomplete="off"
             />
           </label>
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-zinc-300">Relayer URL</span>
-            <input
-              id="relayer-url"
-              class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-sm text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-              value="https://artwork-info.feral-file.workers.dev"
-              autocomplete="off"
-            />
-          </label>
         </div>
 
-        <label class="flex min-h-[220px] flex-col">
-          <span class="mb-2 block text-sm font-semibold text-zinc-300">DP1 payload</span>
+        <label class="flex min-h-[420px] flex-1 flex-col">
+          <span class="mb-2 block text-sm font-semibold text-neutral-300">DP1 payload</span>
           <textarea
             id="dp1-payload"
-            class="min-h-[180px] flex-1 resize-y rounded-md border border-zinc-800 bg-zinc-900 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
+            class="min-h-[360px] flex-1 resize-y rounded-md border border-neutral-800 bg-neutral-900 p-4 font-mono text-sm leading-6 text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
             placeholder='{"version":"1.0","items":[]}'
             spellcheck="false"
             autocomplete="off"
@@ -56,71 +41,36 @@
           ></textarea>
         </label>
 
-        <div class="grid flex-1 grid-cols-2 gap-4 max-md:grid-cols-1">
-          <div class="flex min-h-[360px] flex-col gap-4">
-            <label class="block">
-              <span class="mb-2 block text-sm font-semibold text-zinc-300">Pairing code</span>
-              <input
-                id="short-code"
-                class="h-11 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 font-mono text-lg text-zinc-100 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-                placeholder="123456"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-              />
-            </label>
-            <details class="rounded-md border border-zinc-800 bg-zinc-900 p-4">
-              <summary class="cursor-pointer text-sm font-semibold text-zinc-300">QR/deep-link payload</summary>
-              <label class="mt-4 block">
-                <span class="mb-2 block text-sm font-semibold text-zinc-400">Payload JSON or URL</span>
-                <textarea
-                  id="qr-payload"
-                  class="min-h-[220px] w-full resize-none rounded-md border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-red-400 focus:ring-2 focus:ring-red-500/20"
-                  spellcheck="false"
-                  autocomplete="off"
-                  placeholder='{"v":1,"type":"ff-mint-pairing","brokerBaseUrl":"...","channelId":"ch_...","pairingToken":"pt_..."}'
-                ></textarea>
-              </label>
-            </details>
-          </div>
-          <div class="flex min-h-[360px] flex-col">
-            <span class="mb-2 block text-sm font-semibold text-zinc-300">Browser session</span>
-            <div class="flex-1 rounded-md border border-zinc-800 bg-zinc-900 p-4">
-              <span class="block text-xs font-semibold uppercase tracking-normal text-zinc-500">Session</span>
-              <strong id="session-status" class="mt-2 block text-lg text-zinc-50">Checking</strong>
-              <button
-                id="forget-session"
-                type="button"
-                class="mt-5 h-10 rounded-md border border-zinc-700 px-4 text-sm font-semibold text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
-              >
-                Forget
-              </button>
-            </div>
-          </div>
+        <div class="rounded-md border border-neutral-800 bg-neutral-900 p-4">
+          <span class="block text-xs font-semibold uppercase tracking-normal text-neutral-500">Browser session</span>
+          <strong id="session-status" class="mt-2 block text-lg text-neutral-50">Checking</strong>
+          <button
+            id="forget-session"
+            type="button"
+            class="mt-5 h-10 rounded-md border border-neutral-700 px-4 text-sm font-semibold text-neutral-200 transition hover:border-neutral-500 hover:bg-neutral-800"
+          >
+            Forget
+          </button>
         </div>
-      </form>
+      </section>
 
-      <aside class="flex min-h-screen flex-col justify-between bg-zinc-900 p-5 max-lg:min-h-0" aria-live="polite">
+      <aside class="flex min-h-screen flex-col justify-between bg-neutral-900 p-5 max-lg:min-h-0" aria-live="polite">
         <div>
-          <span class="block text-xs font-semibold uppercase tracking-normal text-zinc-500">Status</span>
-          <p id="message" class="mt-2 text-sm font-medium leading-6 text-zinc-300"></p>
+          <span class="block text-xs font-semibold uppercase tracking-normal text-neutral-500">Status</span>
+          <p id="message" class="mt-2 text-sm font-medium leading-6 text-neutral-300"></p>
         </div>
       </aside>
     </main>
 
     <script type="module">
       import {
-        displayDp1Playlist,
-        readStoredEphemeralBrowserSession,
-        requestEphemeralSession
+        clearStoredEphemeralBrowserSession,
+        hasStoredEphemeralBrowserSession,
+        mountPlayOnArtComputerButton
       } from "@feral-file/mint-pairing-requester-js";
 
-      const form = mustElement("play-form");
       const brokerUrlInput = mustElement("broker-url");
-      const relayerUrlInput = mustElement("relayer-url");
       const dp1PayloadInput = mustElement("dp1-payload");
-      const qrPayloadInput = mustElement("qr-payload");
-      const shortCodeInput = mustElement("short-code");
-      const playButton = mustElement("play-button");
       const forgetButton = mustElement("forget-session");
       const sessionStatus = mustElement("session-status");
       const message = mustElement("message");
@@ -133,75 +83,12 @@
         return element;
       }
 
-      function setBusy(isBusy) {
-        playButton.disabled = isBusy;
-        brokerUrlInput.disabled = isBusy;
-        relayerUrlInput.disabled = isBusy;
-        dp1PayloadInput.disabled = isBusy;
-        qrPayloadInput.disabled = isBusy;
-        shortCodeInput.disabled = isBusy;
-      }
-
       function setMessage(value) {
         message.textContent = value;
       }
 
-      function userFacingError(error) {
-        const raw = error instanceof Error ? error.message : "request failed";
-        if (raw === "short-code resolution failed: 404") {
-          return "Pairing code not found on this broker. Start a new FF1 pairing session or check the Broker URL.";
-        }
-        if (raw === "short-code resolution failed: 410") {
-          return "Pairing code expired. Start a new FF1 pairing session.";
-        }
-        if (raw === "channel join failed: 401") {
-          return "Pairing code was already used. Start a new FF1 pairing session.";
-        }
-        return raw;
-      }
-
-      function storageKey() {
-        return `ff:ephemeral-browser-session:${window.location.origin}`;
-      }
-
-      function clearStoredSession() {
-        localStorage.removeItem(storageKey());
-        sessionStatus.textContent = "Not paired";
-      }
-
-      function currentSession() {
-        const session = readStoredEphemeralBrowserSession(localStorage, window.location.origin);
-        sessionStatus.textContent = session === undefined ? "Not paired" : "Paired";
-        return session;
-      }
-
-      function pairingInput() {
-        const qrPayload = qrPayloadInput.value.trim();
-        if (qrPayload.length > 0) {
-          return { qrPayload };
-        }
-        const shortCode = shortCodeInput.value.trim();
-        if (shortCode.length === 0) {
-          throw new Error("pairing code or QR payload required");
-        }
-        return { brokerBaseUrl: brokerUrlInput.value.trim(), shortCode };
-      }
-
-      async function pairSession() {
-        sessionStatus.textContent = "Pairing";
-        setMessage("Waiting for encrypted approval result.");
-        const session = await requestEphemeralSession({
-          pairing: pairingInput(),
-          browserInfo: {
-            name: navigator.userAgent.includes("Chrome") ? "Chrome" : "Browser",
-            userAgent: navigator.userAgent,
-            label: document.title
-          },
-          pollIntervalMs: 2000,
-          maxWaitMs: 300000
-        });
-        sessionStatus.textContent = "Paired";
-        return session;
+      function updateSessionStatus() {
+        sessionStatus.textContent = hasStoredEphemeralBrowserSession(localStorage, window.location.origin) ? "Paired" : "Not paired";
       }
 
       function dp1Payload() {
@@ -212,45 +99,32 @@
         }
       }
 
-      async function playDp1Payload(session) {
-        try {
-          await displayDp1Playlist({
-            session,
-            playlist: dp1Payload(),
-            relayerBaseUrl: relayerUrlInput.value.trim()
-          });
-        } catch (error) {
-          if (error instanceof Error && error.message === "browser session rejected") {
-            clearStoredSession();
-          }
-          throw error;
-        }
-      }
+      mountPlayOnArtComputerButton({
+        container: "#play-button-container",
+        playlist: dp1Payload,
+        brokerBaseUrl: () => brokerUrlInput.value.trim(),
+        browserInfo: {
+          name: navigator.userAgent.includes("Chrome") ? "Chrome" : "Browser",
+          userAgent: navigator.userAgent,
+          label: document.title
+        },
+        pollIntervalMs: 2000,
+        maxWaitMs: 300000,
+        onStatusChange: (value) => {
+          setMessage(value);
+          updateSessionStatus();
+        },
+        onSuccess: updateSessionStatus,
+        onError: updateSessionStatus
+      });
 
       forgetButton.addEventListener("click", () => {
-        clearStoredSession();
+        clearStoredEphemeralBrowserSession(localStorage, window.location.origin);
+        updateSessionStatus();
         setMessage("Stored session cleared.");
       });
 
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        void (async () => {
-          setBusy(true);
-          try {
-            const session = currentSession() ?? await pairSession();
-            setMessage("Sending DP1 payload to FF1.");
-            await playDp1Payload(session);
-            setMessage("DP1 payload sent.");
-          } catch (error) {
-            setMessage(userFacingError(error));
-            sessionStatus.textContent = currentSession() === undefined ? "Not paired" : "Paired";
-          } finally {
-            setBusy(false);
-          }
-        })();
-      });
-
-      currentSession();
+      updateSessionStatus();
       setMessage("Ready.");
     </script>
   </body>

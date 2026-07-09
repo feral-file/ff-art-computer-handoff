@@ -21,6 +21,36 @@ await displayDp1Playlist({
 });
 ```
 
+## Wrapped Pairing UI
+
+For a standard integration, mount the provided **Play on Art Computer** button.
+It checks origin-scoped storage first, shows the pairing-code popup only when
+there is no valid local browser session, waits for mobile approval, and then
+sends the DP1 playlist to `ff-relayer`.
+
+```ts
+import { mountPlayOnArtComputerButton } from "@feral-file/mint-pairing-requester-js";
+
+mountPlayOnArtComputerButton({
+  container: "#play-on-art-computer",
+  playlist: dp1Playlist,
+  brokerBaseUrl: "https://handoff.feralfile.com",
+  relayerBaseUrl: "https://artwork-info.feral-file.workers.dev"
+});
+```
+
+The popup instructs users to make sure the FF1 is open, open the Feral File
+mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser
+Pairing on. After the pairing code is entered, the popup switches to an approval
+state that asks the user to approve the browser session in the Feral File mobile
+app and notes that FF CLI support will be available soon.
+
+For custom UI, use `createPairingCodeDialog`,
+`requestEphemeralSessionWithPairingUi`, `hasStoredEphemeralBrowserSession`, and
+`clearStoredEphemeralBrowserSession`. The dialog accepts copy and class-name
+overrides so a website can keep its own styling while preserving the pairing
+sequence and approval handoff.
+
 ## Commands
 
 ```sh
