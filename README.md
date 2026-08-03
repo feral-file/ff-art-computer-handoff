@@ -4,6 +4,8 @@ This repository contains a secure mint-pairing prototype for giving a granted br
 
 The target design uses an NFT display website that embeds the browser token requester library, a Go ephemeral token minter embedded in FF1 `feral-controld`, the FF1 frontend for presenting the pairing QR/code, `ff-controller` as the user approval surface reached through `ff-relayer`, and the FF1 display path. The server in `server/` should now be treated as the **Mint Pairing Broker**: a short-lived opaque transport for QR/code-based pairing and end-to-end encrypted mint request/response messages. The sequential flow is documented in [docs/sequential-flow.md](docs/sequential-flow.md).
 
+**Integrating a website?** Start with the [Third-Party Integration Guide](docs/third-party-integration.md).
+
 This is not production-ready. Treat it as a minimal prototype until product, infrastructure, and security review are complete.
 
 ## Components
@@ -17,6 +19,7 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 
 ## Design Docs
 
+- [Third-party integration guide](docs/third-party-integration.md)
 - [Sequential flow](docs/sequential-flow.md)
 - [Server design](docs/server-design.md)
 - [API design](docs/api-design.md)
