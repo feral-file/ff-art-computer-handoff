@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@feral-file/mint-pairing-requester-js": "file:../clients/session-recipient/js"
+    "@feralfile/play": "file:../clients/session-recipient/js"
   },
   "devDependencies": {
     "@types/node": "^20.14.11",

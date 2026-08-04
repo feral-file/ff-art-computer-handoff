@@ -5,7 +5,8 @@ This sample should act as an NFT display website that integrates the browser tok
 ## Run
 
 ```sh
-cd integration
+cd clients/session-recipient/js && npm ci && npm run build && cd ../../../integration
+npm ci
 npm run sample:dev
 ```
 

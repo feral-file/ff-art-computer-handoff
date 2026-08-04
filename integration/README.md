@@ -7,6 +7,9 @@ Integration coverage should exercise the mint pairing flow described in [Sequent
 ## Commands
 
 ```sh
+# The file: dependency on @feralfile/play resolves to its dist/ output,
+# so build the library first.
+(cd ../clients/session-recipient/js && npm ci && npm run build)
 npm ci
 npm run lint
 npm run typecheck

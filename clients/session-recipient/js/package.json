@@ -1,11 +1,36 @@
 {
-  "name": "@feral-file/mint-pairing-requester-js",
+  "name": "@feralfile/play",
   "version": "0.1.0",
-  "private": true,
+  "description": "Add a Play on Art Computer button to your website: pair a visitor's browser with their Feral File Art Computer and play a DP-1 playlist on it.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/feral-file/ff-art-computer-handoff.git",
+    "directory": "clients/session-recipient/js"
+  },
+  "homepage": "https://github.com/feral-file/ff-art-computer-handoff/blob/main/docs/third-party-integration.md",
+  "keywords": [
+    "feralfile",
+    "art-computer",
+    "dp1",
+    "digital-art"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -1,0 +1,116 @@
+name: publish-npm
+
+# Publishes @feralfile/play (clients/session-recipient/js) when a GitHub
+# release is published. Auth is npm OIDC trusted publishing (same pattern as
+# @feralfile/cli): configure the trusted publisher for @feralfile/play on
+# npmjs.org to point at this repo + this workflow file, environment blank.
+#
+# First release only: the trusted publisher cannot be configured before the
+# package exists (npm/cli#8544), so cut 0.1.0 with an NPM_TOKEN repo secret
+# (granular automation token with publish rights on the @feralfile scope).
+# Then wire the trusted publisher on the package's npm settings page and
+# delete the secret — the publish step below prefers OIDC when no token is
+# present.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # OIDC token used by `npm publish --provenance` to authenticate against
+      # the trusted publisher configured for @feralfile/play on npmjs.org.
+      id-token: write
+    defaults:
+      run:
+        working-directory: clients/session-recipient/js
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 ships with npm 11.x, which is required for OIDC trusted
+      # publishing. Consumers are unaffected; this only affects how CI
+      # itself publishes.
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package version matches tag
+        run: |
+          set -euo pipefail
+
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ github.event.release.tag_name }}"
+
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: package.json is $PACKAGE_VERSION but tag is $TAG_VERSION."
+            echo "Before cutting a release, set package.json version to the exact tag (example: tag 0.1.0 -> version 0.1.0)."
+            exit 1
+          fi
+
+          echo "Version check passed: package.json and tag are both $PACKAGE_VERSION."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Publish to npm
+        # prepack runs the tsc build, so the published tarball ships dist/.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VERSION=$(node -p "require('./package.json').version")
+
+          # Idempotent: re-running a release for an already-published version
+          # verifies instead of failing.
+          if npm view "@feralfile/play@${VERSION}" version > /dev/null 2>&1; then
+            echo "@feralfile/play@${VERSION} is already published; skipping."
+            exit 0
+          fi
+
+          # Bootstrap path, mirroring source-resolver and ff-cli's pre-OIDC
+          # release era: npm cannot configure a trusted publisher for a package
+          # that does not exist yet (npm/cli#8544), so the first publish
+          # authenticates with an NPM_TOKEN repo secret. Once the package
+          # exists and its trusted publisher is wired on npmjs.com, delete the
+          # secret — publishes then use OIDC with no workflow change.
+          if [ -n "${NPM_TOKEN}" ]; then
+            echo "NPM_TOKEN secret present: publishing with token auth (bootstrap path)."
+            export NODE_AUTH_TOKEN="${NPM_TOKEN}"
+          else
+            echo "No NPM_TOKEN secret: publishing via OIDC trusted publishing."
+          fi
+
+          npm publish --access public --provenance
+
+      - name: Verify npm package version
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.release.tag_name }}"
+          ATTEMPTS=10
+          SLEEP_SECONDS=10
+
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            NPM_VERSION=$(npm view @feralfile/play version)
+            if [ "$NPM_VERSION" = "$TAG" ]; then
+              echo "npm version check passed: $NPM_VERSION"
+              exit 0
+            fi
+
+            if [ "$attempt" -lt "$ATTEMPTS" ]; then
+              echo "npm version is $NPM_VERSION, expected $TAG; retrying in ${SLEEP_SECONDS}s (${attempt}/${ATTEMPTS})"
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          echo "npm version check failed: expected $TAG"
+          exit 1

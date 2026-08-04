@@ -34,6 +34,8 @@ jobs:
           cache-dependency-path: clients/session-recipient/js/package-lock.json
       - run: npm ci
         working-directory: clients/session-recipient/js
+      - run: npm run build
+        working-directory: clients/session-recipient/js
       - run: npm run lint
         working-directory: clients/session-recipient/js
       - run: npm run typecheck
@@ -70,6 +72,8 @@ jobs:
             clients/ephemeral-token-minter/go/go.mod
             integration/go-minter-helper/go.mod
       - run: npm ci
+        working-directory: clients/session-recipient/js
+      - run: npm run build
         working-directory: clients/session-recipient/js
       - run: npm ci
         working-directory: integration

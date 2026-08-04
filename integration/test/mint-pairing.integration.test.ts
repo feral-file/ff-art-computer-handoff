@@ -10,7 +10,7 @@ import {
   exportPublicJwk,
   generateBrowserKeyPair,
   requestEphemeralSession
-} from "@feral-file/mint-pairing-requester-js";
+} from "@feralfile/play";
 
 type CreateChannelResponse = {
   channelId: string;

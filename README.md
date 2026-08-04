@@ -11,7 +11,7 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 ## Components
 
 - [server](server/README.md): Go Mint Pairing Broker backed by durable bbolt storage.
-- [clients/session-recipient/js](clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites.
+- [clients/session-recipient/js](clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites, published to npm as `@feralfile/play`.
 - [clients/ephemeral-token-minter/go](clients/ephemeral-token-minter/go/README.md): Go library used by FF1 `feral-controld` to communicate with the broker, handle E2EE mint request/result payloads, and return encrypted mint results.
 - [integration](integration/README.md): Vitest integration tests.
 - `.github/workflows/ci.yml`: CI for server, NFT display website requester library, token minter, and integration tests after the implementation is updated.
@@ -30,7 +30,7 @@ Implementation status: the Go broker, Go ephemeral token minter library, browser
 
 ```sh
 cd server && test -z "$(gofmt -l .)" && go vet ./... && go test ./... && go build ./...
-cd clients/session-recipient/js && npm ci && npm run lint && npm run typecheck && npm test
+cd clients/session-recipient/js && npm ci && npm run build && npm run lint && npm run typecheck && npm test
 cd clients/ephemeral-token-minter/go && test -z "$(gofmt -l .)" && go vet ./... && go test ./...
 cd integration && npm ci && npm run sample:build && npm run lint && npm run typecheck && npm test
 ```
