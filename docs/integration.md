@@ -1,10 +1,16 @@
-# Website Integration Guide
+# Integration Guide
 
-This guide is for a website that wants a **Play on Art Computer** action: a
-visitor selects works on your site, presses play, and the works appear on their
-Feral File Art Computer (FF1). You embed a browser library; everything else —
-pairing, approval, encryption, device delivery — is handled by Feral File
-infrastructure.
+This guide adds a **Play on Art Computer** action to your product: someone
+selects works, presses play, and the works appear on their Feral File Art
+Computer (FF1). It is for any product where people encounter art — a
+marketplace, an artist's site, a gallery app, an agent. You embed a browser
+library; everything else — pairing, approval, encryption, device delivery — is
+handled by Feral File infrastructure.
+
+The library targets the web runtime, so it drops into websites, web apps,
+Electron, and web views inside native apps. A fully native client can
+implement the same flow directly against the documented protocol
+([API design](api-design.md), [sequential flow](sequential-flow.md)).
 
 What the visitor experiences:
 
