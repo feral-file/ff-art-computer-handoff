@@ -5,7 +5,7 @@ a visitor selects works on a website, presses play, and the works appear on
 their Feral File Art Computer (FF1).
 
 **Integrating a website?** Start with the
-[Third-Party Integration Guide](docs/third-party-integration.md).
+[Website Integration Guide](docs/website-integration.md).
 
 Three components make the flow work. A website embeds the
 [`@feralfile/play`](clients/session-recipient/js) browser library. The library
@@ -40,7 +40,7 @@ with `ffos-user`.
 
 ## Design Docs
 
-- [Third-party integration guide](docs/third-party-integration.md)
+- [Website integration guide](docs/website-integration.md)
 - [Sequential flow](docs/sequential-flow.md)
 - [Server design](docs/server-design.md)
 - [API design](docs/api-design.md)

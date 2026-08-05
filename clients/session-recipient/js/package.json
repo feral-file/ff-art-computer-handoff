@@ -21,7 +21,7 @@
     "url": "git+https://github.com/feral-file/play.git",
     "directory": "clients/session-recipient/js"
   },
-  "homepage": "https://github.com/feral-file/play/blob/main/docs/third-party-integration.md",
+  "homepage": "https://github.com/feral-file/play/blob/main/docs/website-integration.md",
   "keywords": [
     "feralfile",
     "art-computer",
