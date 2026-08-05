@@ -20,7 +20,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # write: the job attaches the browser bundle (dist/play.js) to the release.
+      contents: write
       # OIDC token used by `npm publish --provenance` to authenticate against
       # the trusted publisher configured for @feralfile/play on npmjs.org.
       id-token: write
@@ -90,6 +91,17 @@ jobs:
           fi
 
           npm publish --access public --provenance
+
+      - name: Attach browser bundle to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          npm run build
+          npm run bundle
+          gh release upload "${{ github.event.release.tag_name }}" dist/play.js \
+            --clobber --repo "${{ github.repository }}"
 
       - name: Verify npm package version
         run: |

@@ -37,11 +37,13 @@ metadata you supply in `browserInfo`. The full model is in
 - The requester library: [`@feralfile/play`](https://www.npmjs.com/package/@feralfile/play)
   (`npm i @feralfile/play`), source in this repo at
   [`clients/session-recipient/js`](../clients/session-recipient/js). For a
-  static site with no build step, import it straight from a CDN:
-  `import { mountPlayOnArtComputerButton } from "https://esm.sh/@feralfile/play"`.
-  If the registry cannot find it yet, the first release is still rolling out —
-  consume it from this repo meanwhile, the way the
-  [integration sample](../integration) does with a `file:` dependency.
+  site with no build step, download `play.js` from the
+  [latest release](https://github.com/feral-file/play/releases/latest) — a
+  self-contained ESM bundle — host it next to your pages, and
+  `import { mountPlayOnArtComputerButton } from "./play.js"`. A CDN import
+  (`https://esm.sh/@feralfile/play`) also works for quick experiments, but
+  self-hosting keeps your integration free of infrastructure that neither of
+  us operates.
 - A [DP-1](https://github.com/display-protocol/dp1) playlist document for the
   works the visitor selected. DP-1 is an open spec; each playlist item points
   at a URL the FF1 can render (artwork pages, media files, generative works).
@@ -123,24 +125,27 @@ await displayDp1Playlist({ session, playlist });
   yourself.
 - Expiry and revocation are enforced by `ff-relayer`. The user can revoke a
   browser session from the Feral File side at any time.
-- On a display attempt with a dead session the library throws
-  `"browser session rejected"`; the wrapped button clears the stored session
+- On a display attempt with a dead session the library throws a `PlayError`
+  with code `session_rejected`; the wrapped button clears the stored session
   automatically so the next click re-pairs. Custom integrations should call
-  `clearStoredEphemeralBrowserSession` on that error and prompt to pair again.
+  `clearStoredEphemeralBrowserSession` on that code and prompt to pair again.
 
 ## Errors
 
-`pairingErrorMessage(error)` maps library errors to user-facing text. The cases
-worth handling:
+Errors are `PlayError` instances carrying a stable `code`. Match on
+`error.code` — messages are for humans and may change between versions;
+codes will not. `pairingErrorMessage(error)` maps them to user-facing text.
 
-| Error message | Meaning |
+| `error.code` | Meaning |
 | :-- | :-- |
-| `short-code resolution failed: 404` | Code not found — user should re-enable Browser Pairing and use the latest code. |
-| `short-code resolution failed: 410` | Code expired — same recovery. |
-| `channel join failed: 401` | Code already used — same recovery. |
-| `mint request rejected` | User declined the approval in the mobile app. |
-| `poll timed out` | No approval within `maxWaitMs` (default 5 minutes). |
-| `browser session rejected` | Stored session expired or revoked — clear it and re-pair. |
+| `pairing_code_not_found` | Code not found — user should re-enable Browser Pairing and use the latest code. |
+| `pairing_code_expired` | Code expired — same recovery. |
+| `pairing_code_used` | Code already used — same recovery. |
+| `mint_rejected` | User declined the approval in the mobile app. |
+| `approval_timeout` | No approval within `maxWaitMs` (default 5 minutes). |
+| `session_rejected` | Stored session expired or revoked — the wrapped button clears it; custom integrations clear and re-pair. |
+| `pairing_canceled` | User closed the pairing dialog. |
+| `display_failed` / `display_rejected` | The relayer or FF1 refused the display request. |
 
 ## Network endpoints
 

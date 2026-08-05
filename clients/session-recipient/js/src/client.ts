@@ -1,4 +1,5 @@
 import { canonicalJson, type JsonValue } from "./canonicalJson.js";
+import { PlayError, type PlayErrorCode } from "./errors.js";
 import {
   decryptChannelMessage,
   encryptChannelMessage,
@@ -131,9 +132,14 @@ function publicJwkMatches(left: JsonWebKey, right: JsonWebKey): boolean {
   return canonicalJson(left as JsonValue) === canonicalJson(right as JsonValue);
 }
 
-async function jsonResponse(response: Response, errorPrefix: string): Promise<unknown> {
+async function jsonResponse(
+  response: Response,
+  errorPrefix: string,
+  codeByStatus?: Record<number, PlayErrorCode>,
+  defaultCode?: PlayErrorCode
+): Promise<unknown> {
   if (!response.ok) {
-    throw new Error(`${errorPrefix}: ${String(response.status)}`);
+    throw new PlayError(`${errorPrefix}: ${String(response.status)}`, codeByStatus?.[response.status] ?? defaultCode);
   }
   return response.json() as Promise<unknown>;
 }
@@ -294,7 +300,7 @@ function parseSessionPayload(value: unknown, channelId: string, requestMessageId
     throw new Error("mint result invalid");
   }
   if (value["type"] === "mint_rejected") {
-    throw new Error("mint request rejected");
+    throw new PlayError("mint request rejected", "mint_rejected");
   }
   if (value["type"] !== "mint_succeeded") {
     throw new Error("mint result invalid");
@@ -344,7 +350,14 @@ async function resolvePairing(input: PairingInput, fetcher: typeof fetch): Promi
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ shortCode: input.shortCode })
   });
-  return parseResolvedPairing(await jsonResponse(response, "short-code resolution failed"), brokerBaseUrl, input.shortCode);
+  return parseResolvedPairing(
+    await jsonResponse(response, "short-code resolution failed", {
+      404: "pairing_code_not_found",
+      410: "pairing_code_expired"
+    }),
+    brokerBaseUrl,
+    input.shortCode
+  );
 }
 
 async function joinChannel(input: {
@@ -366,7 +379,10 @@ async function joinChannel(input: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
-  return parseJoin(await jsonResponse(response, "channel join failed"), input.pairing.channelId);
+  return parseJoin(
+    await jsonResponse(response, "channel join failed", { 401: "pairing_code_used" }),
+    input.pairing.channelId
+  );
 }
 
 async function sendMintRequest(input: {
@@ -517,7 +533,7 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
     }
     await sleep(options.pollIntervalMs ?? 5000);
   }
-  throw new Error("poll timed out");
+  throw new PlayError("poll timed out", "approval_timeout");
 }
 
 export async function displayDp1Playlist(options: DisplayDp1PlaylistOptions): Promise<void> {
@@ -545,10 +561,10 @@ export async function displayDp1Playlist(options: DisplayDp1PlaylistOptions): Pr
   });
 
   if (response.status === 401 || response.status === 403) {
-    throw new Error("browser session rejected");
+    throw new PlayError("browser session rejected", "session_rejected");
   }
-  const result = await jsonResponse(response, "display request failed");
+  const result = await jsonResponse(response, "display request failed", undefined, "display_failed");
   if (extractOk(result) === false) {
-    throw new Error("FF1 rejected display request");
+    throw new PlayError("FF1 rejected display request", "display_rejected");
   }
 }

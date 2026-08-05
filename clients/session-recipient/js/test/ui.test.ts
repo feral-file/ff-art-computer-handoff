@@ -200,7 +200,7 @@ describe("pairing UI copy", () => {
       "In Browser Pairing, toggle pairing mode on, then enter the code shown for that FF1."
     ]);
     expect(defaultPairingCodeDialogCopy.approvalBody).toBe("Open the Feral File mobile app to approve this browser session.");
-    expect(defaultPairingCodeDialogCopy.cliNotice).toBe("FF CLI support will be available soon.");
+    expect(defaultPairingCodeDialogCopy.cliNotice).toBeUndefined();
   });
 
   it("maps broker and approval failures to bounded user-facing messages", () => {
