@@ -19,8 +19,11 @@ What the visitor experiences:
 
 Your site never receives device API keys or account credentials. It receives a
 short-lived, revokable browser session token scoped to the display path only.
-The pairing exchange is end-to-end encrypted between the visitor's browser and
-their FF1; the broker in the middle cannot read it. The full model is in
+The mint request and the returned session travel end-to-end encrypted between
+the visitor's browser and their FF1, so the broker in the middle never sees
+session tokens or playlist content. The broker does see what channel join
+sends in the clear: the pairing code, your site's origin, and the browser
+metadata you supply in `browserInfo`. The full model is in
 [Sequential Flow](sequential-flow.md).
 
 ## What you need
