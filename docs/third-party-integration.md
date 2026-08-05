@@ -19,18 +19,23 @@ What the visitor experiences:
 
 Your site never receives device API keys or account credentials. It receives a
 short-lived, revokable browser session token scoped to the display path only.
-The pairing exchange is end-to-end encrypted between the visitor's browser and
-their FF1; the broker in the middle cannot read it. The full model is in
+The mint request and the returned session travel end-to-end encrypted between
+the visitor's browser and their FF1, so the broker in the middle never sees
+session tokens or playlist content. The broker does see what channel join
+sends in the clear: the pairing code, your site's origin, and the browser
+metadata you supply in `browserInfo`. The full model is in
 [Sequential Flow](sequential-flow.md).
 
 ## What you need
 
-- The requester library: `@feral-file/mint-pairing-requester-js`, in this repo
-  at [`clients/session-recipient/js`](../clients/session-recipient/js). It is
-  not yet published to npm — consume it from this repo (the
-  [integration sample](../integration) does so with a `file:` dependency; a
-  git dependency or vendored build works the same way). npm publication is
-  planned; the API below is the stable surface to build against.
+- The requester library: [`@feralfile/play`](https://www.npmjs.com/package/@feralfile/play)
+  (`npm i @feralfile/play`), source in this repo at
+  [`clients/session-recipient/js`](../clients/session-recipient/js). For a
+  static site with no build step, import it straight from a CDN:
+  `import { mountPlayOnArtComputerButton } from "https://esm.sh/@feralfile/play"`.
+  If the registry cannot find it yet, the first release is still rolling out —
+  consume it from this repo meanwhile, the way the
+  [integration sample](../integration) does with a `file:` dependency.
 - A [DP-1](https://github.com/display-protocol/dp1) playlist document for the
   works the visitor selected. DP-1 is an open spec; each playlist item points
   at a URL the FF1 can render (artwork pages, media files, generative works).
@@ -43,7 +48,7 @@ Your visitor needs an FF1 and the Feral File mobile app with their FF1 added.
 ## Quickest path: mount the button
 
 ```ts
-import { mountPlayOnArtComputerButton } from "@feral-file/mint-pairing-requester-js";
+import { mountPlayOnArtComputerButton } from "@feralfile/play";
 
 mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
@@ -82,7 +87,7 @@ import {
   displayDp1Playlist,
   hasStoredEphemeralBrowserSession,
   clearStoredEphemeralBrowserSession
-} from "@feral-file/mint-pairing-requester-js";
+} from "@feralfile/play";
 
 const session = await requestEphemeralSessionWithPairingUi({
   brokerBaseUrl: "https://handoff.feralfile.com",
@@ -161,12 +166,10 @@ uses the hosted broker by default, so no local server is needed.
 ## Status
 
 The requester library API documented here, the hosted broker, the mobile-app
-approval flow, and the FF1 display path work end to end today. Two honest
-caveats while this is pre-1.0:
-
-- The library is not yet on npm; consume it from this repo for now.
-- Sessions currently authorize the display/cast path only. That is by design —
-  scope will stay narrow.
+approval flow, and the FF1 display path work end to end today. One honest
+caveat while this is pre-1.0: expect additive API change between 0.x versions.
+Sessions authorize the display/cast path only — that is by design, and the
+scope will stay narrow.
 
 Tell us what is unclear, impractical, or missing — open an issue on this repo.
 Integration questions and API-shape feedback are exactly what this stage is
