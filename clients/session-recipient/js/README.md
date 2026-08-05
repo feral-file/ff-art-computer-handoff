@@ -49,7 +49,7 @@ The popup instructs users to make sure the FF1 is open, open the Feral File
 mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser
 Pairing on. After the pairing code is entered, the popup switches to an approval
 state that asks the user to approve the browser session in the Feral File mobile
-app and notes that FF CLI support will be available soon.
+app.
 
 For custom UI, use `createPairingCodeDialog`,
 `requestEphemeralSessionWithPairingUi`, `hasStoredEphemeralBrowserSession`, and

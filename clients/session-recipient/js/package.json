@@ -1,6 +1,6 @@
 {
   "name": "@feralfile/play",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Add a Play on Art Computer button to your website: pair a visitor's browser with their Feral File Art Computer and play a DP-1 playlist on it.",
   "license": "Apache-2.0",
   "type": "module",
@@ -21,7 +21,7 @@
     "url": "git+https://github.com/feral-file/play.git",
     "directory": "clients/session-recipient/js"
   },
-  "homepage": "https://github.com/feral-file/play/blob/main/docs/integration.md",
+  "homepage": "https://docs.feralfile.com/art-computer/play/",
   "keywords": [
     "feralfile",
     "art-computer",
@@ -30,13 +30,15 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepack": "npm run build && npm run bundle",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bundle": "esbuild src/index.ts --bundle --format=esm --minify --outfile=dist/play.js"
   },
   "devDependencies": {
     "@types/node": "^20.14.11",
+    "esbuild": "^0.28.1",
     "eslint": "^9.7.0",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.35.1",

@@ -11,6 +11,7 @@ import {
   type TokenStorage,
   type TokenStorageOptions
 } from "./client.js";
+import { PlayError } from "./errors.js";
 
 export type PairingCodeDialogCopy = {
   title: string;
@@ -22,7 +23,7 @@ export type PairingCodeDialogCopy = {
   cancelLabel: string;
   approvalTitle: string;
   approvalBody: string;
-  cliNotice: string;
+  cliNotice?: string;
   errorTitle: string;
 };
 
@@ -115,11 +116,28 @@ export const defaultPairingCodeDialogCopy: PairingCodeDialogCopy = {
   cancelLabel: "Cancel",
   approvalTitle: "Approve in Feral File",
   approvalBody: "Open the Feral File mobile app to approve this browser session.",
-  cliNotice: "FF CLI support will be available soon.",
   errorTitle: "Pairing failed"
 };
 
 export function pairingErrorMessage(error: unknown): string {
+  if (error instanceof PlayError && error.code !== undefined) {
+    switch (error.code) {
+      case "pairing_code_not_found":
+        return "Pairing code not found on this broker. Turn Browser Pairing on again and enter the latest code.";
+      case "pairing_code_expired":
+        return "Pairing code expired. Turn Browser Pairing on again and enter the new code.";
+      case "pairing_code_used":
+        return "Pairing code was already used. Turn Browser Pairing on again and enter the new code.";
+      case "mint_rejected":
+        return "The browser session was not approved in Feral File.";
+      case "approval_timeout":
+        return "Timed out waiting for approval in Feral File.";
+      case "session_rejected":
+        return "The stored browser session was rejected. Pair again.";
+      default:
+        break;
+    }
+  }
   const raw = error instanceof Error ? error.message : "request failed";
   if (raw === "short-code resolution failed: 404") {
     return "Pairing code not found on this broker. Turn Browser Pairing on again and enter the latest code.";
@@ -225,10 +243,13 @@ export function createPairingCodeDialog(options: PairingCodeDialogOptions): Pair
   approvalBody.className = "ff-ac-pairing-approval-body";
   approvalBody.textContent = copy.approvalBody;
 
-  const cliNotice = ownerDocument.createElement("p");
-  cliNotice.className = "ff-ac-pairing-cli";
-  cliNotice.textContent = copy.cliNotice;
-  approval.append(approvalTitle, approvalBody, cliNotice);
+  approval.append(approvalTitle, approvalBody);
+  if (copy.cliNotice !== undefined && copy.cliNotice.length > 0) {
+    const cliNotice = ownerDocument.createElement("p");
+    cliNotice.className = "ff-ac-pairing-cli";
+    cliNotice.textContent = copy.cliNotice;
+    approval.append(cliNotice);
+  }
   panel.append(title, intro, instructionList, form, approval);
 
   let settled = false;
@@ -277,7 +298,7 @@ export function createPairingCodeDialog(options: PairingCodeDialogOptions): Pair
   cancel.addEventListener("click", () => {
     if (!settled) {
       settled = true;
-      rejectPrompt?.(new Error("pairing canceled"));
+      rejectPrompt?.(new PlayError("pairing canceled", "pairing_canceled"));
     }
     close();
   });
@@ -399,7 +420,7 @@ async function playFromButton(
     setStatus(options, status, "Playlist sent to Art Computer.");
     options.onSuccess?.();
   } catch (error) {
-    if (error instanceof Error && error.message === "browser session rejected") {
+    if (error instanceof PlayError && error.code === "session_rejected") {
       const storage = resolveUiStorage(options.storage);
       if (storage !== undefined) {
         clearStoredEphemeralBrowserSession(storage, currentOriginForUi());
