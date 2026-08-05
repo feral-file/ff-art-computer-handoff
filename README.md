@@ -1,21 +1,42 @@
-# Feral File Browser Session Mint Pairing
+# Play on Art Computer
 
-This repository contains a secure mint-pairing prototype for giving a granted browser temporary, revokable access to request DP1 playlist display through `ff-relayer`.
+This repository contains everything behind the **Play on Art Computer** action:
+a visitor selects works on a website, presses play, and the works appear on
+their Feral File Art Computer (FF1).
 
-The target design uses an NFT display website that embeds the browser token requester library, a Go ephemeral token minter embedded in FF1 `feral-controld`, the FF1 frontend for presenting the pairing QR/code, `ff-controller` as the user approval surface reached through `ff-relayer`, and the FF1 display path. The server in `server/` should now be treated as the **Mint Pairing Broker**: a short-lived opaque transport for QR/code-based pairing and end-to-end encrypted mint request/response messages. The sequential flow is documented in [docs/sequential-flow.md](docs/sequential-flow.md).
+**Integrating a website?** Start with the
+[Third-Party Integration Guide](docs/third-party-integration.md).
 
-**Integrating a website?** Start with the [Third-Party Integration Guide](docs/third-party-integration.md).
+Three components make the flow work. A website embeds the
+[`@feralfile/play`](clients/session-recipient/js) browser library. The library
+pairs the visitor's browser with their FF1 through the **Mint Pairing Broker**
+in [server/](server), a short-lived opaque transport for QR/code-based pairing
+and end-to-end encrypted mint request/response messages. On the device,
+`feral-controld` embeds the [Go ephemeral token minter](clients/ephemeral-token-minter/go)
+to answer those requests, asks the user for approval through the Feral File
+mobile app via `ff-relayer`, and mints a revokable browser session scoped to
+the display path. The full flow is documented in
+[docs/sequential-flow.md](docs/sequential-flow.md).
 
-This is not production-ready. Treat it as a minimal prototype until product, infrastructure, and security review are complete.
+The pairing flow, the hosted broker at `https://handoff.feralfile.com`, the
+mobile-app approval, and the FF1 display path work end to end today. The
+integration surface is pre-1.0: expect additive change, and open issues freely
+— integration feedback is exactly what this stage is for.
 
 ## Components
 
+- [clients/session-recipient/js](clients/session-recipient/js/README.md): the `@feralfile/play` browser library websites embed.
 - [server](server/README.md): Go Mint Pairing Broker backed by durable bbolt storage.
-- [clients/session-recipient/js](clients/session-recipient/js/README.md): TypeScript token requester library embedded by NFT display websites, published to npm as `@feralfile/play`.
 - [clients/ephemeral-token-minter/go](clients/ephemeral-token-minter/go/README.md): Go library used by FF1 `feral-controld` to communicate with the broker, handle E2EE mint request/result payloads, and return encrypted mint results.
-- [integration](integration/README.md): Vitest integration tests.
-- `.github/workflows/ci.yml`: CI for server, NFT display website requester library, token minter, and integration tests after the implementation is updated.
-- `Dockerfile`: Production image for the Mint Pairing Broker.
+- [integration](integration/README.md): integration tests and the sample website.
+- `.github/workflows/ci.yml`: CI for the broker, browser library, token minter, and integration tests.
+- `.github/workflows/publish-npm.yml`: publishes `@feralfile/play` on GitHub release.
+- `Dockerfile`: production image for the Mint Pairing Broker.
+
+Go module paths still use the pre-rename repository path
+(`github.com/feral-file/ff-art-computer-handoff/...`); GitHub redirects keep
+them resolving, and the module paths will move in a later coordinated change
+with `ffos-user`.
 
 ## Design Docs
 
@@ -23,8 +44,6 @@ This is not production-ready. Treat it as a minimal prototype until product, inf
 - [Sequential flow](docs/sequential-flow.md)
 - [Server design](docs/server-design.md)
 - [API design](docs/api-design.md)
-
-Implementation status: the Go broker, Go ephemeral token minter library, browser requester library, Docker image, and Docker-backed integration test have replaced the earlier handoff prototype surfaces.
 
 ## Commands
 
