@@ -10,6 +10,6 @@ Use deterministic verification and local fresh-context review as separate implem
 
 1. **Handoff** - Produce a compact handoff: master purpose, recent implementation change, files changed, key decisions, checks run.
 2. **Diff** - Generate the review diff by comparing the branch to `main`, not only the latest commit or latest local edit.
-3. **Review** - Give one fresh-context `reviewer` the handoff, the diff against `main`, and any relevant test or lint output. The reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
+3. **Review** - Give one fresh-context `reviewer` the handoff, the diff against `main`, and any relevant test or lint output. The reviewer follows the generated contract in `prompts/code-review.md` and the repository context in `prompts/code-review.delta.md`.
 4. **Disposition** - The human change owner decides whether to fix each material finding, reject it with a reason, or accept it as risk.
 5. **Later reading** - If a material revision changes behavior, re-run deterministic checks and update the handoff. A later review may use fresh context and the full updated diff as another sensor reading; model acceptance is not a commit or merge gate.
