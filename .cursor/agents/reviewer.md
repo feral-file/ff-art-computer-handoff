@@ -1,7 +1,7 @@
 ---
 name: reviewer
 model: inherit
-description: Read-only code reviewer. Use after implementation for a fresh-context review of the full diff against main. Follows prompts/code-review.md and does not edit unless asked.
+description: Read-only local code reviewer. Use after implementation for a fresh-context review of the full diff against main. Follows prompts/code-review.md and does not edit unless asked.
 readonly: true
 ---
 
