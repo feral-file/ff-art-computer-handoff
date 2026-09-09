@@ -171,8 +171,9 @@ The visitor's browser talks to two hosts. If your site sets a
 - the Mint Pairing Broker (`https://handoff.feralfile.com`) — pairing-code
   resolution, channel join, encrypted message send/poll
 - `ff-relayer` — the display request. The relayer base URL is delivered inside
-  the approved session payload (`session.relayerBaseUrl`); the current default
-  is `https://artwork-info.feral-file.workers.dev`.
+  the approved session payload (`session.relayerBaseUrl`). Read it from the
+  session rather than hard-coding a host; the default can change between
+  releases.
 
 Playlist content does not travel through either host: the browser sends the
 DP-1 document to the relayer as part of the display command, and artwork media
