@@ -25,7 +25,13 @@ export type BrowserInfo = {
 export type EphemeralBrowserSession = {
   token: string;
   sessionId: string;
-  expiresAt: string;
+  /**
+   * Absent when the device owner chose to keep this site paired until removed.
+   * Such a session has no expiry and stays valid until it is revoked.
+   */
+  expiresAt?: string;
+  /** True when the device owner kept this site paired until removed. */
+  persistent?: boolean;
   relayerBaseUrl?: string;
 };
 
@@ -53,6 +59,13 @@ export type RequestEphemeralSessionOptions = {
   storage?: TokenStorageOptions;
   pollIntervalMs?: number;
   maxWaitMs?: number;
+  /**
+   * Session lifetime this site asks for, in whole seconds, from 1 to
+   * 31536000 (one year). Leave unset to take the device default. The device
+   * owner decides: if they keep this site paired until removed, the requested
+   * lifetime is ignored and the session has no expiry.
+   */
+  requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;
 };
 
@@ -110,6 +123,39 @@ function optionalString(record: Record<string, unknown>, key: string): string | 
     return undefined;
   }
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * A session with a null or absent `expiresAt` never expires locally: the device
+ * owner kept the site paired until they remove it.
+ */
+function hasExpiry(record: Record<string, unknown>): boolean {
+  const value = record["expiresAt"];
+  return value !== undefined && value !== null;
+}
+
+/**
+ * Protocol maximum for a requested session lifetime: one year of seconds. It
+ * sits well above any device or relay limit, and keeps the value inside the
+ * range that survives canonical JSON — a larger number serializes in
+ * exponential form, which the device cannot decode as an integer.
+ */
+export const maxRequestedExpiresInSeconds = 31_536_000;
+
+/**
+ * Checks a caller-supplied `requestedExpiresInSeconds`, returning it unchanged
+ * (or undefined when unset) and throwing on anything the device cannot honour.
+ * Every entry point calls this before it consults stored state, so a bad option
+ * fails the same way whether or not a session is already cached.
+ */
+export function validateRequestedExpiresInSeconds(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(value) || value < 1 || value > maxRequestedExpiresInSeconds) {
+    throw new Error(`requestedExpiresInSeconds must be a whole number of seconds from 1 to ${String(maxRequestedExpiresInSeconds)}`);
+  }
+  return value;
 }
 
 function requiredNumber(record: Record<string, unknown>, key: string, errorMessage: string): number {
@@ -308,16 +354,24 @@ function parseSessionPayload(value: unknown, channelId: string, requestMessageId
   const session = isRecord(value["session"]) ? value["session"] : value;
   const token = requiredString(session, "token", "mint result invalid");
   const sessionId = requiredString(session, "sessionId", "mint result invalid");
-  const expiresAt = requiredString(session, "expiresAt", "mint result invalid");
-  const expiresAtMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-    throw new Error("mint result invalid");
+  const persistent = session["persistent"] === true;
+  const expiresAt = hasExpiry(session) ? requiredString(session, "expiresAt", "mint result invalid") : undefined;
+  if (expiresAt === undefined) {
+    if (!persistent) {
+      throw new Error("mint result invalid");
+    }
+  } else {
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      throw new Error("mint result invalid");
+    }
   }
   const relayerBaseUrl = optionalString(session, "relayerBaseUrl");
   return {
     token,
     sessionId,
-    expiresAt,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+    ...(persistent ? { persistent: true } : {}),
     ...(relayerBaseUrl === undefined ? {} : { relayerBaseUrl })
   };
 }
@@ -423,11 +477,26 @@ export function storeEphemeralBrowserSession(storage: TokenStorage, origin: stri
   storage.setItem(ephemeralBrowserSessionStorageKey(origin), JSON.stringify(stored));
 }
 
+/**
+ * Reads the session stored for this origin. A record we can no longer use — one
+ * that is malformed, expired, or carries no expiry without the `persistent`
+ * marker — is dropped from storage, so the next play re-pairs instead of
+ * holding a token that will never be sent.
+ */
 export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin: string): EphemeralBrowserSession | undefined {
-  const raw = storage.getItem(ephemeralBrowserSessionStorageKey(origin));
+  const key = ephemeralBrowserSessionStorageKey(origin);
+  const raw = storage.getItem(key);
   if (raw === null) {
     return undefined;
   }
+  const session = parseStoredSession(raw, origin);
+  if (session === undefined) {
+    storage.removeItem(key);
+  }
+  return session;
+}
+
+function parseStoredSession(raw: string, origin: string): EphemeralBrowserSession | undefined {
   let value: unknown;
   try {
     value = JSON.parse(raw) as unknown;
@@ -439,16 +508,27 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
   }
   const token = optionalString(value, "token");
   const sessionId = optionalString(value, "sessionId");
-  const expiresAt = optionalString(value, "expiresAt");
-  const expiresAtMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
-  if (token === undefined || sessionId === undefined || expiresAt === undefined || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+  if (token === undefined || sessionId === undefined) {
+    return undefined;
+  }
+  const persistent = value["persistent"] === true;
+  const expiryPresent = hasExpiry(value);
+  const expiresAt = expiryPresent ? optionalString(value, "expiresAt") : undefined;
+  if (expiryPresent) {
+    const expiresAtMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      return undefined;
+    }
+  } else if (!persistent) {
+    // No expiry and no owner-kept marker: not a session this library wrote.
     return undefined;
   }
   const relayerBaseUrl = optionalString(value, "relayerBaseUrl");
   return {
     token,
     sessionId,
-    expiresAt,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+    ...(persistent ? { persistent: true } : {}),
     ...(relayerBaseUrl === undefined ? {} : { relayerBaseUrl })
   };
 }
@@ -456,6 +536,7 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
   const fetcher = options.fetchImpl ?? defaultFetch();
   const origin = currentOrigin();
+  const requestedExpiresInSeconds = validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);
@@ -479,6 +560,12 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
     requestMessageId,
     origin,
     browserInfo: browserInfoToJsonValue(browserInfo),
+    // Tells the device this page can hold a session with no expiry. The flag
+    // exists from 0.3.0; earlier clients required a string expiresAt, so the
+    // device may send the owner-kept shape only to a requester that declared
+    // this.
+    supportsPersistentSessions: true,
+    ...(requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds }),
     browserPublicKeyJwk: browserPublicKeyJwk as unknown as JsonValue,
     requestedAt: new Date().toISOString()
   };

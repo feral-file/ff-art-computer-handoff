@@ -13,6 +13,11 @@ const (
 	messageTypeMintRequest   = "mint_request"
 	messageTypeMintSucceeded = "mint_succeeded"
 	messageTypeMintRejected  = "mint_rejected"
+
+	// MaxRequestedExpiresInSeconds is the largest session lifetime a browser
+	// requester may ask for: one year, the same bound the JS requester enforces
+	// before it sends the request.
+	MaxRequestedExpiresInSeconds = 31536000
 )
 
 // PublicJWK is a JSON/JWK-compatible P-256 public key.
@@ -48,23 +53,74 @@ type BrowserInfo struct {
 }
 
 // MintRequest is the decrypted browser request returned to feral-controld.
+//
+// SupportsPersistentSessions is false for a requester that did not declare the
+// capability, including every browser client before @feralfile/play 0.3.0:
+// those pages require a string expiresAt and cannot hold a session without one.
+// Only a request with it set may be answered with a persistent result.
 type MintRequest struct {
-	ChannelID                 string
-	MessageID                 string
-	Seq                       int64
-	Origin                    string
-	BrowserInfo               BrowserInfo
-	BrowserPublicKeyJWK       PublicJWK
-	RequestedExpiresInSeconds int `json:"requestedExpiresInSeconds,omitempty"`
+	ChannelID                  string
+	MessageID                  string
+	Seq                        int64
+	Origin                     string
+	BrowserInfo                BrowserInfo
+	BrowserPublicKeyJWK        PublicJWK
+	RequestedExpiresInSeconds  int  `json:"requestedExpiresInSeconds,omitempty"`
+	SupportsPersistentSessions bool `json:"supportsPersistentSessions,omitempty"`
 }
 
 // MintResult is the host-created browser session returned to the browser only
 // inside an encrypted broker message.
+//
+// Persistent marks a session the device owner kept until they remove it. Such a
+// session has no expiry: ExpiresAt is ignored and the payload carries a null
+// expiresAt.
 type MintResult struct {
 	SessionID      string    `json:"sessionId"`
 	Token          string    `json:"token"`
 	ExpiresAt      time.Time `json:"expiresAt"`
+	Persistent     bool      `json:"persistent,omitempty"`
 	RelayerBaseURL string    `json:"relayerBaseUrl,omitempty"`
+}
+
+// MarshalJSON writes the session payload shape: a null expiresAt for an
+// owner-kept session, so a zero time never serializes as 0001-01-01.
+func (result MintResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(mintSessionPlaintext{
+		SessionID:      result.SessionID,
+		Token:          result.Token,
+		ExpiresAt:      result.expiresAt(),
+		Persistent:     result.Persistent,
+		RelayerBaseURL: result.RelayerBaseURL,
+	})
+}
+
+// UnmarshalJSON reads the session payload shape, treating a null or absent
+// expiresAt as no expiry.
+func (result *MintResult) UnmarshalJSON(data []byte) error {
+	var session mintSessionPlaintext
+	if err := json.Unmarshal(data, &session); err != nil {
+		return err
+	}
+	*result = MintResult{
+		SessionID:      session.SessionID,
+		Token:          session.Token,
+		Persistent:     session.Persistent,
+		RelayerBaseURL: session.RelayerBaseURL,
+	}
+	if session.ExpiresAt != nil {
+		result.ExpiresAt = *session.ExpiresAt
+	}
+	return nil
+}
+
+// expiresAt is nil for an owner-kept session and for a zero time.
+func (result MintResult) expiresAt() *time.Time {
+	if result.Persistent || result.ExpiresAt.IsZero() {
+		return nil
+	}
+	expiresAt := result.ExpiresAt
+	return &expiresAt
 }
 
 // MintRejection is an encrypted application-level rejection result.
@@ -104,14 +160,22 @@ type envelopeAAD struct {
 }
 
 type mintRequestPlaintext struct {
-	Version                   int         `json:"v"`
-	Type                      string      `json:"type"`
-	ChannelID                 string      `json:"channelId"`
-	RequestMessageID          string      `json:"requestMessageId"`
-	Origin                    string      `json:"origin"`
-	BrowserInfo               BrowserInfo `json:"browserInfo,omitempty"`
-	BrowserPublicKeyJWK       PublicJWK   `json:"browserPublicKeyJwk"`
-	RequestedExpiresInSeconds int         `json:"requestedExpiresInSeconds,omitempty"`
+	Version             int         `json:"v"`
+	Type                string      `json:"type"`
+	ChannelID           string      `json:"channelId"`
+	RequestMessageID    string      `json:"requestMessageId"`
+	Origin              string      `json:"origin"`
+	BrowserInfo         BrowserInfo `json:"browserInfo,omitempty"`
+	BrowserPublicKeyJWK PublicJWK   `json:"browserPublicKeyJwk"`
+	// RequestedExpiresInSeconds stays a json.Number so an absent field is
+	// distinguishable from a sent value, and so a number the requester should
+	// never have sent (fractional, or exponential like 1e+21) is rejected as a
+	// bad request instead of failing the whole decode.
+	RequestedExpiresInSeconds json.Number `json:"requestedExpiresInSeconds,omitempty"`
+	// SupportsPersistentSessions is absent from requesters that predate
+	// owner-kept sessions, so it decodes to false and they keep getting the
+	// timed session shape they can parse.
+	SupportsPersistentSessions bool `json:"supportsPersistentSessions,omitempty"`
 }
 
 type mintSuccessPlaintext struct {
@@ -122,11 +186,14 @@ type mintSuccessPlaintext struct {
 	Session          mintSessionPlaintext `json:"session"`
 }
 
+// mintSessionPlaintext is the session shape the browser requester parses. A null
+// expiresAt with persistent true is an owner-kept session that never expires.
 type mintSessionPlaintext struct {
-	SessionID      string    `json:"sessionId"`
-	Token          string    `json:"token"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	RelayerBaseURL string    `json:"relayerBaseUrl,omitempty"`
+	SessionID      string     `json:"sessionId"`
+	Token          string     `json:"token"`
+	ExpiresAt      *time.Time `json:"expiresAt"`
+	Persistent     bool       `json:"persistent,omitempty"`
+	RelayerBaseURL string     `json:"relayerBaseUrl,omitempty"`
 }
 
 type mintRejectionPlaintext struct {

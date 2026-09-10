@@ -146,14 +146,19 @@ func (ch *Channel) PollMintRequest(ctx context.Context, afterSeq int64) (*MintRe
 		if err := validateMintRequestPlaintext(decoded, ch.channelID, message.MessageID, remotePublicJWK); err != nil {
 			return nil, err
 		}
+		requestedExpiresInSeconds, err := parseRequestedExpiresInSeconds(decoded.RequestedExpiresInSeconds)
+		if err != nil {
+			return nil, err
+		}
 		return &MintRequest{
-			ChannelID:                 ch.channelID,
-			MessageID:                 message.MessageID,
-			Seq:                       message.Seq,
-			Origin:                    decoded.Origin,
-			BrowserInfo:               decoded.BrowserInfo,
-			BrowserPublicKeyJWK:       remotePublicJWK,
-			RequestedExpiresInSeconds: decoded.RequestedExpiresInSeconds,
+			ChannelID:                  ch.channelID,
+			MessageID:                  message.MessageID,
+			Seq:                        message.Seq,
+			Origin:                     decoded.Origin,
+			BrowserInfo:                decoded.BrowserInfo,
+			BrowserPublicKeyJWK:        remotePublicJWK,
+			RequestedExpiresInSeconds:  requestedExpiresInSeconds,
+			SupportsPersistentSessions: decoded.SupportsPersistentSessions,
 		}, nil
 	}
 	return nil, nil
@@ -164,6 +169,12 @@ func (ch *Channel) SendMintSuccess(ctx context.Context, request MintRequest, res
 	if result.Token == "" {
 		return nil, errors.New("mint result token is required")
 	}
+	if result.Persistent && !request.SupportsPersistentSessions {
+		return nil, errors.New("mint result cannot be persistent: the requester did not declare supportsPersistentSessions, send a timed session instead")
+	}
+	if !result.Persistent && result.ExpiresAt.IsZero() {
+		return nil, errors.New("mint result expiresAt is required unless the session is persistent")
+	}
 	return ch.sendEncryptedResult(ctx, request, mintSuccessPlaintext{
 		Version:          1,
 		Type:             messageTypeMintSucceeded,
@@ -172,7 +183,8 @@ func (ch *Channel) SendMintSuccess(ctx context.Context, request MintRequest, res
 		Session: mintSessionPlaintext{
 			SessionID:      result.SessionID,
 			Token:          result.Token,
-			ExpiresAt:      result.ExpiresAt,
+			ExpiresAt:      result.expiresAt(),
+			Persistent:     result.Persistent,
 			RelayerBaseURL: result.RelayerBaseURL,
 		},
 	})
@@ -248,6 +260,24 @@ func validateMintRequestPlaintext(decoded mintRequestPlaintext, channelID string
 		return err
 	}
 	return nil
+}
+
+// parseRequestedExpiresInSeconds reads the lifetime the requester asked for. An
+// absent value is 0: the host picks the lifetime. A present value must be a
+// whole number of seconds within the protocol bound; anything else is a bad
+// request, not a decode failure.
+func parseRequestedExpiresInSeconds(value json.Number) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	seconds, err := value.Int64()
+	if err != nil {
+		return 0, errors.New("mint request requestedExpiresInSeconds must be a whole number of seconds")
+	}
+	if seconds < 1 || seconds > MaxRequestedExpiresInSeconds {
+		return 0, fmt.Errorf("mint request requestedExpiresInSeconds must be from 1 to %d", MaxRequestedExpiresInSeconds)
+	}
+	return int(seconds), nil
 }
 
 func validateBrowserOrigin(origin string) error {

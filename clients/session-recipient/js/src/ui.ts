@@ -2,6 +2,7 @@ import {
   displayDp1Playlist,
   readStoredEphemeralBrowserSession,
   requestEphemeralSession,
+  validateRequestedExpiresInSeconds,
   type BrowserInfo,
   type DisplayDp1PlaylistOptions,
   type Dp1Playlist,
@@ -72,6 +73,13 @@ export type PlayOnArtComputerButtonOptions = {
   storage?: TokenStorageOptions;
   pollIntervalMs?: number;
   maxWaitMs?: number;
+  /**
+   * Session lifetime this site asks for, in whole seconds, from 1 to
+   * 31536000 (one year). Leave unset to take the device default. The device
+   * owner decides: if they keep this site paired until removed, the requested
+   * lifetime is ignored and the session has no expiry.
+   */
+  requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;
   document?: Document;
   buttonLabel?: string;
@@ -321,6 +329,7 @@ export function createPairingCodeDialog(options: PairingCodeDialogOptions): Pair
 export async function requestEphemeralSessionWithPairingUi(
   options: RequestEphemeralSessionWithPairingUiOptions
 ): Promise<EphemeralBrowserSession> {
+  validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const storage = resolveUiStorage(options.storage);
   const origin = currentOriginForUi();
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);
@@ -342,6 +351,7 @@ export async function requestEphemeralSessionWithPairingUi(
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
       ...(options.maxWaitMs === undefined ? {} : { maxWaitMs: options.maxWaitMs }),
+      ...(options.requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds: options.requestedExpiresInSeconds }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
     });
     dialog.close();
@@ -353,6 +363,7 @@ export async function requestEphemeralSessionWithPairingUi(
 }
 
 export function mountPlayOnArtComputerButton(options: PlayOnArtComputerButtonOptions): PlayOnArtComputerButtonHandle {
+  validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const ownerDocument = options.document ?? requiredDocument();
   ensureDefaultStyles(ownerDocument);
   const container = resolveContainer(ownerDocument, options.container);
@@ -408,6 +419,7 @@ async function playFromButton(
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
       ...(options.maxWaitMs === undefined ? {} : { maxWaitMs: options.maxWaitMs }),
+      ...(options.requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds: options.requestedExpiresInSeconds }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
       ...(options.createDialog === undefined ? {} : { createDialog: options.createDialog }),
       dialog: {

@@ -282,12 +282,14 @@ type RequestEphemeralSessionOptions = {
     userAgent?: string;
     label?: string;
   };
+  requestedExpiresInSeconds?: number;
 };
 
 type EphemeralBrowserSession = {
   token: string;
   sessionId: string;
-  expiresAt: string;
+  expiresAt?: string;
+  persistent?: boolean;
   relayerBaseUrl?: string;
 };
 
@@ -306,6 +308,9 @@ Required behavior:
 - Decrypt and validate channel binding before returning the token.
 - Store the token only in origin-scoped browser storage when storage is enabled.
 - Never expose raw token values through logs, analytics, or thrown error text.
+- Send `requestedExpiresInSeconds` in the mint request only when the caller set it; the device decides the lifetime.
+- Send `supportsPersistentSessions: true` in every mint request. It is the capability flag for the owner-kept session shape: a client that can hold a session with no expiry declares it, and the device may send the nullable shape only to a requester that did.
+- Treat a session with a null or absent `expiresAt` (`persistent: true`) as valid until it is revoked.
 
 ## Mint Library API
 
@@ -328,17 +333,32 @@ type PairingDisplay struct {
 }
 
 type MintRequest struct {
-    ChannelID   string
-    Origin      string
-    BrowserInfo BrowserInfo
+    ChannelID                  string
+    Origin                     string
+    BrowserInfo                BrowserInfo
+    RequestedExpiresInSeconds  int
+    SupportsPersistentSessions bool
 }
 
 type MintResult struct {
-    SessionID string
-    Token     string
-    ExpiresAt time.Time
+    SessionID  string
+    Token      string
+    ExpiresAt  time.Time
+    Persistent bool
 }
 ```
+
+`Persistent` marks a session the device owner kept until they remove it:
+`feral-controld` sets it, the encrypted session payload carries
+`"persistent": true` with a null `expiresAt`, and `ExpiresAt` is ignored.
+
+The owner-kept shape is gated on the requester's capability. A request without
+`supportsPersistentSessions` decodes as incapable — the browser library sends it
+from 0.3.0, and every earlier client requires a string `expiresAt` — and the
+mint library refuses
+a persistent result for it, so the host sends a timed session instead. The wire
+version stays `v: 1`: the nullable shape only ever reaches a requester that
+declared support for it.
 
 Expected library operations:
 
