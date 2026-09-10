@@ -60,10 +60,10 @@ export type RequestEphemeralSessionOptions = {
   pollIntervalMs?: number;
   maxWaitMs?: number;
   /**
-   * Session lifetime this site asks for, in whole seconds. Leave unset to take
-   * the device default. The device owner decides: if they keep this site paired
-   * until removed, the requested lifetime is ignored and the session has no
-   * expiry.
+   * Session lifetime this site asks for, in whole seconds, from 1 to
+   * 31536000 (one year). Leave unset to take the device default. The device
+   * owner decides: if they keep this site paired until removed, the requested
+   * lifetime is ignored and the session has no expiry.
    */
   requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;
@@ -134,12 +134,20 @@ function hasExpiry(record: Record<string, unknown>): boolean {
   return value !== undefined && value !== null;
 }
 
+/**
+ * Protocol maximum for a requested session lifetime: one year of seconds. It
+ * sits well above any device or relay limit, and keeps the value inside the
+ * range that survives canonical JSON — a larger number serializes in
+ * exponential form, which the device cannot decode as an integer.
+ */
+export const maxRequestedExpiresInSeconds = 31_536_000;
+
 function validRequestedExpiresInSeconds(value: number | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error("requestedExpiresInSeconds must be a positive integer");
+  if (!Number.isSafeInteger(value) || value < 1 || value > maxRequestedExpiresInSeconds) {
+    throw new Error(`requestedExpiresInSeconds must be a whole number of seconds from 1 to ${String(maxRequestedExpiresInSeconds)}`);
   }
   return value;
 }

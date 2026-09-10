@@ -73,10 +73,10 @@ export type PlayOnArtComputerButtonOptions = {
   pollIntervalMs?: number;
   maxWaitMs?: number;
   /**
-   * Session lifetime this site asks for, in whole seconds. Leave unset to take
-   * the device default. The device owner decides: if they keep this site paired
-   * until removed, the requested lifetime is ignored and the session has no
-   * expiry.
+   * Session lifetime this site asks for, in whole seconds, from 1 to
+   * 31536000 (one year). Leave unset to take the device default. The device
+   * owner decides: if they keep this site paired until removed, the requested
+   * lifetime is ignored and the session has no expiry.
    */
   requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;

@@ -84,9 +84,10 @@ Useful options (see `PlayOnArtComputerButtonOptions` in
 - `browserInfo` — `{ name, userAgent, label }` shown to the user in the
   mobile-app approval prompt. Set `label` to something the visitor will
   recognize, e.g. your site name.
-- `requestedExpiresInSeconds` — session lifetime your site asks for, a positive
-  whole number of seconds. Leave it unset to take the device default. The
-  device owner decides: if they keep your site paired, the request is ignored.
+- `requestedExpiresInSeconds` — session lifetime your site asks for, a whole
+  number of seconds from 1 to 31536000 (one year). Leave it unset to take the
+  device default. The device owner decides: if they keep your site paired, the
+  request is ignored.
 
 ## Custom UI path
 

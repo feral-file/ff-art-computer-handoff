@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   displayDp1Playlist,
   ephemeralBrowserSessionStorageKey,
+  maxRequestedExpiresInSeconds,
   readStoredEphemeralBrowserSession,
   requestEphemeralSession,
   storeEphemeralBrowserSession,
@@ -599,8 +600,22 @@ describe("requestEphemeralSession", () => {
     expect(mintRequest).not.toHaveProperty("requestedExpiresInSeconds");
   });
 
-  it.each([0, -60, 1.5, Number.NaN])("rejects a requested session lifetime of %s", async (requestedExpiresInSeconds) => {
-    await expect(runMintFlow({ requestedExpiresInSeconds })).rejects.toThrow("requestedExpiresInSeconds must be a positive integer");
+  it("sends the maximum requested session lifetime", async () => {
+    const { mintRequest } = await runMintFlow({ requestedExpiresInSeconds: maxRequestedExpiresInSeconds });
+    expect(mintRequest["requestedExpiresInSeconds"]).toBe(31_536_000);
+  });
+
+  it.each([
+    0,
+    -60,
+    1.5,
+    Number.NaN,
+    maxRequestedExpiresInSeconds + 1,
+    2 ** 53,
+    1e21,
+    Number.POSITIVE_INFINITY
+  ])("rejects a requested session lifetime of %s", async (requestedExpiresInSeconds) => {
+    await expect(runMintFlow({ requestedExpiresInSeconds })).rejects.toThrow("requestedExpiresInSeconds must be a whole number of seconds from 1 to 31536000");
   });
 
   it.each([
