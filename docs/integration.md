@@ -62,7 +62,9 @@ import { mountPlayOnArtComputerButton } from "@feralfile/play";
 mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: () => buildDp1PlaylistFromSelection(),
-  brokerBaseUrl: "https://handoff.feralfile.com"
+  brokerBaseUrl: "https://handoff.feralfile.com",
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
 
@@ -85,6 +87,10 @@ Useful options (see `PlayOnArtComputerButtonOptions` in
 - `browserInfo` — `{ name, userAgent, label }` shown to the user in the
   mobile-app approval prompt. Set `label` to something the visitor will
   recognize, e.g. your site name.
+- `relayerBaseUrl` — fallback relayer for a session that carries no URL of its
+  own; `session.relayerBaseUrl` wins when present, and without the fallback
+  such a session fails with `relayer base URL is required`. Set it to the host
+  in [Network endpoints](#network-endpoints).
 - `requestedExpiresInSeconds` — session lifetime your site asks for, a whole
   number of seconds from 1 to 31536000 (one year); a value outside that throws
   where you set it, stored session or not. Leave it unset to take the device
@@ -108,7 +114,12 @@ const session = await requestEphemeralSessionWithPairingUi({
   browserInfo: { label: "My Gallery" }
 });
 
-await displayDp1Playlist({ session, playlist });
+await displayDp1Playlist({
+  session,
+  playlist,
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
+});
 ```
 
 - `requestEphemeralSessionWithPairingUi` reuses a stored session when one
@@ -170,9 +181,13 @@ The visitor's browser talks to two hosts. If your site sets a
 
 - the Mint Pairing Broker (`https://handoff.feralfile.com`) — pairing-code
   resolution, channel join, encrypted message send/poll
-- `ff-relayer` — the display request. The relayer base URL is delivered inside
-  the approved session payload (`session.relayerBaseUrl`); the current default
-  is `https://artwork-info.feral-file.workers.dev`.
+- `ff-relayer` — the display request. Allow
+  `https://tv-cast-coordination.autonomy-system.workers.dev`, the relayer Feral
+  File operates today; you have to write the policy before any session exists.
+  The approved session then carries the base URL actually used
+  (`session.relayerBaseUrl`) — read it from there at runtime rather than
+  hard-coding a host in your display code. If the host changes, the change is
+  announced in the release notes for `@feralfile/play`.
 
 Playlist content does not travel through either host: the browser sends the
 DP-1 document to the relayer as part of the display command, and artwork media

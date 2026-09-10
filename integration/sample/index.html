@@ -103,6 +103,8 @@
         container: "#play-button-container",
         playlist: dp1Payload,
         brokerBaseUrl: () => brokerUrlInput.value.trim(),
+        // Fallback when the session carries no relayer URL; the host from Network endpoints.
+        relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev",
         browserInfo: {
           name: navigator.userAgent.includes("Chrome") ? "Chrome" : "Browser",
           userAgent: navigator.userAgent,

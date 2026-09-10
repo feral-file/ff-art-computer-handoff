@@ -23,7 +23,9 @@ const session = await requestEphemeralSession({
 
 await displayDp1Playlist({
   session,
-  playlist: dp1Playlist
+  playlist: dp1Playlist,
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
 
@@ -41,9 +43,19 @@ mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: dp1Playlist,
   brokerBaseUrl: "https://handoff.feralfile.com",
-  relayerBaseUrl: "https://artwork-info.feral-file.workers.dev"
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
+
+The relayer base URL arrives inside the approved session
+(`session.relayerBaseUrl`) and wins whenever it is there, so never hard-code a
+host in display code. The `relayerBaseUrl` option above is the fallback for a
+session that carries none — without it such a session fails with `relayer base
+URL is required`. A `Content-Security-Policy` also has to be written before any
+session exists, so `connect-src` needs the relayer origin up front: the
+[Integration Guide](../../../docs/integration.md#network-endpoints) lists the
+hosts to allow.
 
 The popup instructs users to make sure the FF1 is open, open the Feral File
 mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser
