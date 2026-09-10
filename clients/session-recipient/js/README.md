@@ -47,7 +47,10 @@ mountPlayOnArtComputerButton({
 The relayer base URL arrives inside the approved session
 (`session.relayerBaseUrl`) and is used from there. Read it from the session
 rather than hard-coding a host; the `relayerBaseUrl` option is only a fallback
-for a session that does not carry one.
+for a session that does not carry one. A `Content-Security-Policy` has to be
+written before any session exists, so `connect-src` needs the relayer origin up
+front: the [Integration Guide](../../../docs/integration.md#network-endpoints)
+lists the hosts to allow.
 
 The popup instructs users to make sure the FF1 is open, open the Feral File
 mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser

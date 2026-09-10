@@ -170,10 +170,13 @@ The visitor's browser talks to two hosts. If your site sets a
 
 - the Mint Pairing Broker (`https://handoff.feralfile.com`) — pairing-code
   resolution, channel join, encrypted message send/poll
-- `ff-relayer` — the display request. The relayer base URL is delivered inside
-  the approved session payload (`session.relayerBaseUrl`). Read it from the
-  session rather than hard-coding a host; the default can change between
-  releases.
+- `ff-relayer` — the display request. Allow
+  `https://tv-cast-coordination.autonomy-system.workers.dev`, the relayer Feral
+  File operates today; you have to write the policy before any session exists.
+  The approved session then carries the base URL actually used
+  (`session.relayerBaseUrl`) — read it from there at runtime rather than
+  hard-coding a host in your display code. If the host changes, the change is
+  announced in the release notes for `@feralfile/play`.
 
 Playlist content does not travel through either host: the browser sends the
 DP-1 document to the relayer as part of the display command, and artwork media
