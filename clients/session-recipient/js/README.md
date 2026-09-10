@@ -40,10 +40,14 @@ import { mountPlayOnArtComputerButton } from "@feralfile/play";
 mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: dp1Playlist,
-  brokerBaseUrl: "https://handoff.feralfile.com",
-  relayerBaseUrl: "https://artwork-info.feral-file.workers.dev"
+  brokerBaseUrl: "https://handoff.feralfile.com"
 });
 ```
+
+The relayer base URL arrives inside the approved session
+(`session.relayerBaseUrl`) and is used from there. Read it from the session
+rather than hard-coding a host; the `relayerBaseUrl` option is only a fallback
+for a session that does not carry one.
 
 The popup instructs users to make sure the FF1 is open, open the Feral File
 mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser
