@@ -353,8 +353,9 @@ type MintResult struct {
 `"persistent": true` with a null `expiresAt`, and `ExpiresAt` is ignored.
 
 The owner-kept shape is gated on the requester's capability. A request without
-`supportsPersistentSessions` decodes as incapable — every client released before
-this shape existed requires a string `expiresAt` — and the mint library refuses
+`supportsPersistentSessions` decodes as incapable — the browser library sends it
+from 0.3.0, and every earlier client requires a string `expiresAt` — and the
+mint library refuses
 a persistent result for it, so the host sends a timed session instead. The wire
 version stays `v: 1`: the nullable shape only ever reaches a requester that
 declared support for it.

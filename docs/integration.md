@@ -134,8 +134,8 @@ await displayDp1Playlist({ session, playlist });
   comes back with `persistent: true` and no `expiresAt`: it does not expire,
   and any `requestedExpiresInSeconds` your site asked for is ignored. Sessions
   the owner does not keep carry an `expiresAt` and expire as before.
-- Keeping a site paired takes effect only for sites on a library version that
-  supports it. Each request declares the capability, and the device sends the
+- Keeping a site paired takes effect only for sites on `@feralfile/play` 0.3.0
+  or newer. Each request declares the capability, and the device sends the
   no-expiry shape only to a site that declared it; a site on an older version
   gets a timed session even when the owner chose to keep it. Upgrading the
   library is the whole fix — nothing changes on the device.

@@ -55,10 +55,9 @@ type BrowserInfo struct {
 // MintRequest is the decrypted browser request returned to feral-controld.
 //
 // SupportsPersistentSessions is false for a requester that did not declare the
-// capability, including every client released before owner-kept sessions
-// existed: those pages require a string expiresAt and cannot hold a session
-// without one. Only a request with it set may be answered with a persistent
-// result.
+// capability, including every browser client before @feralfile/play 0.3.0:
+// those pages require a string expiresAt and cannot hold a session without one.
+// Only a request with it set may be answered with a persistent result.
 type MintRequest struct {
 	ChannelID                  string
 	MessageID                  string
