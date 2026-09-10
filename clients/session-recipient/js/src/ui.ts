@@ -72,6 +72,13 @@ export type PlayOnArtComputerButtonOptions = {
   storage?: TokenStorageOptions;
   pollIntervalMs?: number;
   maxWaitMs?: number;
+  /**
+   * Session lifetime this site asks for, in whole seconds. Leave unset to take
+   * the device default. The device owner decides: if they keep this site paired
+   * until removed, the requested lifetime is ignored and the session has no
+   * expiry.
+   */
+  requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;
   document?: Document;
   buttonLabel?: string;
@@ -342,6 +349,7 @@ export async function requestEphemeralSessionWithPairingUi(
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
       ...(options.maxWaitMs === undefined ? {} : { maxWaitMs: options.maxWaitMs }),
+      ...(options.requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds: options.requestedExpiresInSeconds }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
     });
     dialog.close();
@@ -408,6 +416,7 @@ async function playFromButton(
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
       ...(options.maxWaitMs === undefined ? {} : { maxWaitMs: options.maxWaitMs }),
+      ...(options.requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds: options.requestedExpiresInSeconds }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
       ...(options.createDialog === undefined ? {} : { createDialog: options.createDialog }),
       dialog: {

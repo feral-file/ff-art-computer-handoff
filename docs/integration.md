@@ -21,7 +21,7 @@ What the visitor experiences:
    approve the browser session in the app.
 3. The playlist plays on their Art Computer. Subsequent plays from your site
    skip pairing entirely — the browser session is remembered per site origin
-   until it expires or is revoked.
+   until it expires or is removed.
 
 Your site never receives device API keys or account credentials. It receives a
 short-lived, revokable browser session token scoped to the display path only.
@@ -84,6 +84,9 @@ Useful options (see `PlayOnArtComputerButtonOptions` in
 - `browserInfo` — `{ name, userAgent, label }` shown to the user in the
   mobile-app approval prompt. Set `label` to something the visitor will
   recognize, e.g. your site name.
+- `requestedExpiresInSeconds` — session lifetime your site asks for, a positive
+  whole number of seconds. Leave it unset to take the device default. The
+  device owner decides: if they keep your site paired, the request is ignored.
 
 ## Custom UI path
 
@@ -117,12 +120,17 @@ await displayDp1Playlist({ session, playlist });
 
 ## Sessions
 
-- A session is `{ token, sessionId, expiresAt, relayerBaseUrl? }`. The token is
-  a bearer credential: do not log it, report it to analytics, or expose it in
-  thrown errors.
+- A session is `{ token, sessionId, expiresAt?, persistent?, relayerBaseUrl? }`.
+  The token is a bearer credential: do not log it, report it to analytics, or
+  expose it in thrown errors.
 - Stored in `localStorage` under `ff:ephemeral-browser-session:<origin>`,
   scoped to your site's origin. Pass `storage: false` to manage persistence
   yourself.
+- Approving in the app, the device owner can keep your site paired until they
+  remove it (Settings → Art Computers → the FF1 → Paired sites). Such a session
+  comes back with `persistent: true` and no `expiresAt`: it does not expire,
+  and any `requestedExpiresInSeconds` your site asked for is ignored. Sessions
+  the owner does not keep carry an `expiresAt` and expire as before.
 - Expiry and revocation are enforced by `ff-relayer`. The user can revoke a
   browser session from the Feral File side at any time.
 - On a display attempt with a dead session the library throws a `PlayError`

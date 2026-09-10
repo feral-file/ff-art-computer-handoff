@@ -282,12 +282,14 @@ type RequestEphemeralSessionOptions = {
     userAgent?: string;
     label?: string;
   };
+  requestedExpiresInSeconds?: number;
 };
 
 type EphemeralBrowserSession = {
   token: string;
   sessionId: string;
-  expiresAt: string;
+  expiresAt?: string;
+  persistent?: boolean;
   relayerBaseUrl?: string;
 };
 
@@ -306,6 +308,8 @@ Required behavior:
 - Decrypt and validate channel binding before returning the token.
 - Store the token only in origin-scoped browser storage when storage is enabled.
 - Never expose raw token values through logs, analytics, or thrown error text.
+- Send `requestedExpiresInSeconds` in the mint request only when the caller set it; the device decides the lifetime.
+- Treat a session with a null or absent `expiresAt` (`persistent: true`) as valid until it is revoked.
 
 ## Mint Library API
 

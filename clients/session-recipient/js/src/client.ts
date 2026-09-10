@@ -25,7 +25,13 @@ export type BrowserInfo = {
 export type EphemeralBrowserSession = {
   token: string;
   sessionId: string;
-  expiresAt: string;
+  /**
+   * Absent when the device owner chose to keep this site paired until removed.
+   * Such a session has no expiry and stays valid until it is revoked.
+   */
+  expiresAt?: string;
+  /** True when the device owner kept this site paired until removed. */
+  persistent?: boolean;
   relayerBaseUrl?: string;
 };
 
@@ -53,6 +59,13 @@ export type RequestEphemeralSessionOptions = {
   storage?: TokenStorageOptions;
   pollIntervalMs?: number;
   maxWaitMs?: number;
+  /**
+   * Session lifetime this site asks for, in whole seconds. Leave unset to take
+   * the device default. The device owner decides: if they keep this site paired
+   * until removed, the requested lifetime is ignored and the session has no
+   * expiry.
+   */
+  requestedExpiresInSeconds?: number;
   fetchImpl?: typeof fetch;
 };
 
@@ -110,6 +123,25 @@ function optionalString(record: Record<string, unknown>, key: string): string | 
     return undefined;
   }
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * A session with a null or absent `expiresAt` never expires locally: the device
+ * owner kept the site paired until they remove it.
+ */
+function hasExpiry(record: Record<string, unknown>): boolean {
+  const value = record["expiresAt"];
+  return value !== undefined && value !== null;
+}
+
+function validRequestedExpiresInSeconds(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("requestedExpiresInSeconds must be a positive integer");
+  }
+  return value;
 }
 
 function requiredNumber(record: Record<string, unknown>, key: string, errorMessage: string): number {
@@ -308,16 +340,24 @@ function parseSessionPayload(value: unknown, channelId: string, requestMessageId
   const session = isRecord(value["session"]) ? value["session"] : value;
   const token = requiredString(session, "token", "mint result invalid");
   const sessionId = requiredString(session, "sessionId", "mint result invalid");
-  const expiresAt = requiredString(session, "expiresAt", "mint result invalid");
-  const expiresAtMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-    throw new Error("mint result invalid");
+  const persistent = session["persistent"] === true;
+  const expiresAt = hasExpiry(session) ? requiredString(session, "expiresAt", "mint result invalid") : undefined;
+  if (expiresAt === undefined) {
+    if (!persistent) {
+      throw new Error("mint result invalid");
+    }
+  } else {
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      throw new Error("mint result invalid");
+    }
   }
   const relayerBaseUrl = optionalString(session, "relayerBaseUrl");
   return {
     token,
     sessionId,
-    expiresAt,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+    ...(persistent ? { persistent: true } : {}),
     ...(relayerBaseUrl === undefined ? {} : { relayerBaseUrl })
   };
 }
@@ -439,16 +479,24 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
   }
   const token = optionalString(value, "token");
   const sessionId = optionalString(value, "sessionId");
-  const expiresAt = optionalString(value, "expiresAt");
-  const expiresAtMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
-  if (token === undefined || sessionId === undefined || expiresAt === undefined || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+  if (token === undefined || sessionId === undefined) {
     return undefined;
+  }
+  const persistent = value["persistent"] === true;
+  const expiryPresent = hasExpiry(value);
+  const expiresAt = expiryPresent ? optionalString(value, "expiresAt") : undefined;
+  if (expiryPresent) {
+    const expiresAtMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      return undefined;
+    }
   }
   const relayerBaseUrl = optionalString(value, "relayerBaseUrl");
   return {
     token,
     sessionId,
-    expiresAt,
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+    ...(persistent ? { persistent: true } : {}),
     ...(relayerBaseUrl === undefined ? {} : { relayerBaseUrl })
   };
 }
@@ -456,6 +504,7 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
   const fetcher = options.fetchImpl ?? defaultFetch();
   const origin = currentOrigin();
+  const requestedExpiresInSeconds = validRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);
@@ -479,6 +528,7 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
     requestMessageId,
     origin,
     browserInfo: browserInfoToJsonValue(browserInfo),
+    ...(requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds }),
     browserPublicKeyJwk: browserPublicKeyJwk as unknown as JsonValue,
     requestedAt: new Date().toISOString()
   };
