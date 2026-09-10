@@ -373,6 +373,7 @@ func TestSendMintSuccessSessionExpiryShape(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			harness := newChannelHarness(t)
 			request := harness.mintRequest(t)
+			request.SupportsPersistentSessions = true
 			if _, err := harness.channel.SendMintSuccess(context.Background(), request, test.result); err != nil {
 				t.Fatal(err)
 			}
@@ -415,6 +416,68 @@ func TestSendMintSuccessSessionExpiryShape(t *testing.T) {
 				t.Fatalf("timed session must decode with its expiry: %#v", success.Session)
 			}
 		})
+	}
+}
+
+func TestPollMintRequestReadsPersistentSessionSupport(t *testing.T) {
+	testCases := []struct {
+		name     string
+		declared bool
+		want     bool
+	}{
+		{name: "declared", declared: true, want: true},
+		{name: "absent reads as incapable", declared: false, want: false},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newChannelHarness(t)
+			plaintext := harness.validMintRequestPlaintext("msg_browser")
+			plaintext.SupportsPersistentSessions = testCase.declared
+			harness.messages = []encryptedMessage{harness.encryptBrowserMessage(t, "msg_browser", 7, plaintext)}
+
+			request, err := harness.channel.PollMintRequest(context.Background(), 6)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request == nil || request.SupportsPersistentSessions != testCase.want {
+				t.Fatalf("unexpected request: %#v", request)
+			}
+		})
+	}
+}
+
+func TestSendMintSuccessRefusesPersistentResultForIncapableRequester(t *testing.T) {
+	harness := newChannelHarness(t)
+	request := harness.mintRequest(t)
+	if request.SupportsPersistentSessions {
+		t.Fatal("harness request must not declare persistent session support")
+	}
+
+	_, err := harness.channel.SendMintSuccess(context.Background(), request, MintResult{
+		SessionID:  "eps_kept",
+		Token:      "browser-token-secret",
+		Persistent: true,
+	})
+	if err == nil {
+		t.Fatal("expected a persistent result to be refused for a requester that did not declare support")
+	}
+	if !strings.Contains(err.Error(), "supportsPersistentSessions") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(harness.sentMessages) != 0 {
+		t.Fatalf("expected no sent message, got %d", len(harness.sentMessages))
+	}
+
+	// The host falls back to a timed session for the same request.
+	if _, err := harness.channel.SendMintSuccess(context.Background(), request, MintResult{
+		SessionID: "eps_timed",
+		Token:     "browser-token-secret",
+		ExpiresAt: time.Date(2026, 6, 16, 11, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(harness.sentMessages) != 1 {
+		t.Fatalf("expected the timed session to be sent, got %d messages", len(harness.sentMessages))
 	}
 }
 

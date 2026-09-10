@@ -151,13 +151,14 @@ func (ch *Channel) PollMintRequest(ctx context.Context, afterSeq int64) (*MintRe
 			return nil, err
 		}
 		return &MintRequest{
-			ChannelID:                 ch.channelID,
-			MessageID:                 message.MessageID,
-			Seq:                       message.Seq,
-			Origin:                    decoded.Origin,
-			BrowserInfo:               decoded.BrowserInfo,
-			BrowserPublicKeyJWK:       remotePublicJWK,
-			RequestedExpiresInSeconds: requestedExpiresInSeconds,
+			ChannelID:                  ch.channelID,
+			MessageID:                  message.MessageID,
+			Seq:                        message.Seq,
+			Origin:                     decoded.Origin,
+			BrowserInfo:                decoded.BrowserInfo,
+			BrowserPublicKeyJWK:        remotePublicJWK,
+			RequestedExpiresInSeconds:  requestedExpiresInSeconds,
+			SupportsPersistentSessions: decoded.SupportsPersistentSessions,
 		}, nil
 	}
 	return nil, nil
@@ -167,6 +168,9 @@ func (ch *Channel) PollMintRequest(ctx context.Context, afterSeq int64) (*MintRe
 func (ch *Channel) SendMintSuccess(ctx context.Context, request MintRequest, result MintResult) (*SendMessageResult, error) {
 	if result.Token == "" {
 		return nil, errors.New("mint result token is required")
+	}
+	if result.Persistent && !request.SupportsPersistentSessions {
+		return nil, errors.New("mint result cannot be persistent: the requester did not declare supportsPersistentSessions, send a timed session instead")
 	}
 	if !result.Persistent && result.ExpiresAt.IsZero() {
 		return nil, errors.New("mint result expiresAt is required unless the session is persistent")

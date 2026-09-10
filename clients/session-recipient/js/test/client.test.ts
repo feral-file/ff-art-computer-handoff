@@ -588,6 +588,11 @@ describe("requestEphemeralSession", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("declares support for owner-kept sessions in every mint request", async () => {
+    const { mintRequest } = await runMintFlow();
+    expect(mintRequest["supportsPersistentSessions"]).toBe(true);
+  });
+
   it("sends the requested session lifetime in the mint request when set", async () => {
     const { mintRequest } = await runMintFlow({ requestedExpiresInSeconds: 3600 });
     expect(mintRequest["type"]).toBe("mint_request");

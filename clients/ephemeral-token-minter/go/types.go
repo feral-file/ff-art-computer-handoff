@@ -53,14 +53,21 @@ type BrowserInfo struct {
 }
 
 // MintRequest is the decrypted browser request returned to feral-controld.
+//
+// SupportsPersistentSessions is false for a requester that did not declare the
+// capability, including every client released before owner-kept sessions
+// existed: those pages require a string expiresAt and cannot hold a session
+// without one. Only a request with it set may be answered with a persistent
+// result.
 type MintRequest struct {
-	ChannelID                 string
-	MessageID                 string
-	Seq                       int64
-	Origin                    string
-	BrowserInfo               BrowserInfo
-	BrowserPublicKeyJWK       PublicJWK
-	RequestedExpiresInSeconds int `json:"requestedExpiresInSeconds,omitempty"`
+	ChannelID                  string
+	MessageID                  string
+	Seq                        int64
+	Origin                     string
+	BrowserInfo                BrowserInfo
+	BrowserPublicKeyJWK        PublicJWK
+	RequestedExpiresInSeconds  int  `json:"requestedExpiresInSeconds,omitempty"`
+	SupportsPersistentSessions bool `json:"supportsPersistentSessions,omitempty"`
 }
 
 // MintResult is the host-created browser session returned to the browser only
@@ -166,6 +173,10 @@ type mintRequestPlaintext struct {
 	// never have sent (fractional, or exponential like 1e+21) is rejected as a
 	// bad request instead of failing the whole decode.
 	RequestedExpiresInSeconds json.Number `json:"requestedExpiresInSeconds,omitempty"`
+	// SupportsPersistentSessions is absent from requesters that predate
+	// owner-kept sessions, so it decodes to false and they keep getting the
+	// timed session shape they can parse.
+	SupportsPersistentSessions bool `json:"supportsPersistentSessions,omitempty"`
 }
 
 type mintSuccessPlaintext struct {

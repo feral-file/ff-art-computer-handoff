@@ -309,6 +309,7 @@ Required behavior:
 - Store the token only in origin-scoped browser storage when storage is enabled.
 - Never expose raw token values through logs, analytics, or thrown error text.
 - Send `requestedExpiresInSeconds` in the mint request only when the caller set it; the device decides the lifetime.
+- Send `supportsPersistentSessions: true` in every mint request. It is the capability flag for the owner-kept session shape: a client that can hold a session with no expiry declares it, and the device may send the nullable shape only to a requester that did.
 - Treat a session with a null or absent `expiresAt` (`persistent: true`) as valid until it is revoked.
 
 ## Mint Library API
@@ -332,10 +333,11 @@ type PairingDisplay struct {
 }
 
 type MintRequest struct {
-    ChannelID                 string
-    Origin                    string
-    BrowserInfo               BrowserInfo
-    RequestedExpiresInSeconds int
+    ChannelID                  string
+    Origin                     string
+    BrowserInfo                BrowserInfo
+    RequestedExpiresInSeconds  int
+    SupportsPersistentSessions bool
 }
 
 type MintResult struct {
@@ -349,6 +351,13 @@ type MintResult struct {
 `Persistent` marks a session the device owner kept until they remove it:
 `feral-controld` sets it, the encrypted session payload carries
 `"persistent": true` with a null `expiresAt`, and `ExpiresAt` is ignored.
+
+The owner-kept shape is gated on the requester's capability. A request without
+`supportsPersistentSessions` decodes as incapable — every client released before
+this shape existed requires a string `expiresAt` — and the mint library refuses
+a persistent result for it, so the host sends a timed session instead. The wire
+version stays `v: 1`: the nullable shape only ever reaches a requester that
+declared support for it.
 
 Expected library operations:
 

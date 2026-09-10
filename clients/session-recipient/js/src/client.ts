@@ -560,6 +560,10 @@ export async function requestEphemeralSession(options: RequestEphemeralSessionOp
     requestMessageId,
     origin,
     browserInfo: browserInfoToJsonValue(browserInfo),
+    // Tells the device this page can hold a session with no expiry. Clients
+    // before 0.3.0 required a string expiresAt, so the device may only send the
+    // owner-kept shape to a requester that declared this.
+    supportsPersistentSessions: true,
     ...(requestedExpiresInSeconds === undefined ? {} : { requestedExpiresInSeconds }),
     browserPublicKeyJwk: browserPublicKeyJwk as unknown as JsonValue,
     requestedAt: new Date().toISOString()

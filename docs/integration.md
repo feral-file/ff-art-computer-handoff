@@ -134,6 +134,11 @@ await displayDp1Playlist({ session, playlist });
   comes back with `persistent: true` and no `expiresAt`: it does not expire,
   and any `requestedExpiresInSeconds` your site asked for is ignored. Sessions
   the owner does not keep carry an `expiresAt` and expire as before.
+- Keeping a site paired takes effect only for sites on a library version that
+  supports it. Each request declares the capability, and the device sends the
+  no-expiry shape only to a site that declared it; a site on an older version
+  gets a timed session even when the owner chose to keep it. Upgrading the
+  library is the whole fix — nothing changes on the device.
 - Expiry and revocation are enforced by `ff-relayer`. The user can revoke a
   browser session from the Feral File side at any time.
 - On a display attempt with a dead session the library throws a `PlayError`
