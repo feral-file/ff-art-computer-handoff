@@ -24,7 +24,8 @@ What the visitor experiences:
    until it expires or is removed.
 
 Your site never receives device API keys or account credentials. It receives a
-short-lived, revokable browser session token scoped to the display path only.
+revokable browser session token scoped to the display path only — short-lived
+by default, or kept until the owner removes it when they choose that.
 The mint request and the returned session travel end-to-end encrypted between
 the visitor's browser and their FF1, so the broker in the middle never sees
 session tokens or playlist content. The broker does see what channel join

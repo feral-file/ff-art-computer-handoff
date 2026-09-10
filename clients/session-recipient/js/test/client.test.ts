@@ -675,6 +675,38 @@ describe("requestEphemeralSession", () => {
     });
   });
 
+  it.each([
+    { name: "null", expiresAt: null },
+    { name: "absent", expiresAt: undefined }
+  ])("rejects and clears a stored session with $name expiresAt and no persistent marker", ({ expiresAt }) => {
+    const storage = memoryStorage();
+    const key = ephemeralBrowserSessionStorageKey(testOrigin);
+    storage.setItem(key, JSON.stringify({
+      token: "token-unmarked",
+      sessionId: "sess_unmarked",
+      ...(expiresAt === undefined ? {} : { expiresAt }),
+      origin: testOrigin,
+      storedAt: "2026-01-01T00:00:00.000Z"
+    }));
+    expect(readStoredEphemeralBrowserSession(storage, testOrigin)).toBeUndefined();
+    expect(storage.entries.has(key)).toBe(false);
+  });
+
+  it("clears a stored session it can no longer use", () => {
+    const storage = memoryStorage();
+    const key = ephemeralBrowserSessionStorageKey(testOrigin);
+    storeEphemeralBrowserSession(storage, testOrigin, {
+      token: "token-timed",
+      sessionId: "sess_timed",
+      expiresAt: "2000-01-01T00:00:00.000Z"
+    });
+    expect(readStoredEphemeralBrowserSession(storage, testOrigin)).toBeUndefined();
+    expect(storage.entries.has(key)).toBe(false);
+    storage.setItem(key, "{");
+    expect(readStoredEphemeralBrowserSession(storage, testOrigin)).toBeUndefined();
+    expect(storage.entries.has(key)).toBe(false);
+  });
+
   it("still expires a stored timed session", () => {
     const storage = memoryStorage();
     storeEphemeralBrowserSession(storage, testOrigin, {

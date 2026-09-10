@@ -13,6 +13,11 @@ const (
 	messageTypeMintRequest   = "mint_request"
 	messageTypeMintSucceeded = "mint_succeeded"
 	messageTypeMintRejected  = "mint_rejected"
+
+	// MaxRequestedExpiresInSeconds is the largest session lifetime a browser
+	// requester may ask for: one year, the same bound the JS requester enforces
+	// before it sends the request.
+	MaxRequestedExpiresInSeconds = 31536000
 )
 
 // PublicJWK is a JSON/JWK-compatible P-256 public key.
@@ -149,14 +154,18 @@ type envelopeAAD struct {
 }
 
 type mintRequestPlaintext struct {
-	Version                   int         `json:"v"`
-	Type                      string      `json:"type"`
-	ChannelID                 string      `json:"channelId"`
-	RequestMessageID          string      `json:"requestMessageId"`
-	Origin                    string      `json:"origin"`
-	BrowserInfo               BrowserInfo `json:"browserInfo,omitempty"`
-	BrowserPublicKeyJWK       PublicJWK   `json:"browserPublicKeyJwk"`
-	RequestedExpiresInSeconds int         `json:"requestedExpiresInSeconds,omitempty"`
+	Version             int         `json:"v"`
+	Type                string      `json:"type"`
+	ChannelID           string      `json:"channelId"`
+	RequestMessageID    string      `json:"requestMessageId"`
+	Origin              string      `json:"origin"`
+	BrowserInfo         BrowserInfo `json:"browserInfo,omitempty"`
+	BrowserPublicKeyJWK PublicJWK   `json:"browserPublicKeyJwk"`
+	// RequestedExpiresInSeconds stays a json.Number so an absent field is
+	// distinguishable from a sent value, and so a number the requester should
+	// never have sent (fractional, or exponential like 1e+21) is rejected as a
+	// bad request instead of failing the whole decode.
+	RequestedExpiresInSeconds json.Number `json:"requestedExpiresInSeconds,omitempty"`
 }
 
 type mintSuccessPlaintext struct {

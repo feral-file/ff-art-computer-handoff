@@ -471,11 +471,26 @@ export function storeEphemeralBrowserSession(storage: TokenStorage, origin: stri
   storage.setItem(ephemeralBrowserSessionStorageKey(origin), JSON.stringify(stored));
 }
 
+/**
+ * Reads the session stored for this origin. A record we can no longer use — one
+ * that is malformed, expired, or carries no expiry without the `persistent`
+ * marker — is dropped from storage, so the next play re-pairs instead of
+ * holding a token that will never be sent.
+ */
 export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin: string): EphemeralBrowserSession | undefined {
-  const raw = storage.getItem(ephemeralBrowserSessionStorageKey(origin));
+  const key = ephemeralBrowserSessionStorageKey(origin);
+  const raw = storage.getItem(key);
   if (raw === null) {
     return undefined;
   }
+  const session = parseStoredSession(raw, origin);
+  if (session === undefined) {
+    storage.removeItem(key);
+  }
+  return session;
+}
+
+function parseStoredSession(raw: string, origin: string): EphemeralBrowserSession | undefined {
   let value: unknown;
   try {
     value = JSON.parse(raw) as unknown;
@@ -498,6 +513,9 @@ export function readStoredEphemeralBrowserSession(storage: TokenStorage, origin:
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
       return undefined;
     }
+  } else if (!persistent) {
+    // No expiry and no owner-kept marker: not a session this library wrote.
+    return undefined;
   }
   const relayerBaseUrl = optionalString(value, "relayerBaseUrl");
   return {

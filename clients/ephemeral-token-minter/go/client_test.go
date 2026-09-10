@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func TestPollMintRequestDecryptsBrowserMessage(t *testing.T) {
 			Label:     "Gallery laptop",
 		},
 		BrowserPublicKeyJWK:       harness.browserJWK,
-		RequestedExpiresInSeconds: 900,
+		RequestedExpiresInSeconds: json.Number("900"),
 	}
 	message := harness.encryptBrowserMessage(t, "msg_browser", 7, requestPlaintext)
 	harness.messages = []encryptedMessage{message}
@@ -296,6 +297,49 @@ func TestSendMintSuccessAndRejectionEncryptPayloads(t *testing.T) {
 	}
 	if rejection.Type != messageTypeMintRejected || rejection.ChannelID != "ch_test" || rejection.Reason != "rejected_by_user" || !rejection.Retryable {
 		t.Fatalf("unexpected rejection plaintext: %#v", rejection)
+	}
+}
+
+func TestPollMintRequestValidatesRequestedExpiresInSeconds(t *testing.T) {
+	testCases := []struct {
+		name      string
+		requested json.Number
+		want      int
+		wantError bool
+	}{
+		{name: "absent lets the host choose", requested: "", want: 0},
+		{name: "one second", requested: "1", want: 1},
+		{name: "one year", requested: json.Number(strconv.Itoa(MaxRequestedExpiresInSeconds)), want: MaxRequestedExpiresInSeconds},
+		{name: "zero", requested: "0", wantError: true},
+		{name: "negative", requested: "-1", wantError: true},
+		{name: "over one year", requested: json.Number(strconv.Itoa(MaxRequestedExpiresInSeconds + 1)), wantError: true},
+		{name: "exponent", requested: "1e+21", wantError: true},
+		{name: "fractional", requested: "1.5", wantError: true},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newChannelHarness(t)
+			plaintext := harness.validMintRequestPlaintext("msg_browser")
+			plaintext.RequestedExpiresInSeconds = testCase.requested
+			harness.messages = []encryptedMessage{harness.encryptBrowserMessage(t, "msg_browser", 7, plaintext)}
+
+			request, err := harness.channel.PollMintRequest(context.Background(), 6)
+			if testCase.wantError {
+				if err == nil {
+					t.Fatalf("expected an error, got request %#v", request)
+				}
+				if !strings.Contains(err.Error(), "requestedExpiresInSeconds") {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request == nil || request.RequestedExpiresInSeconds != testCase.want {
+				t.Fatalf("unexpected request: %#v", request)
+			}
+		})
 	}
 }
 

@@ -20,6 +20,8 @@ If a stored session already exists, the page skips pairing and sends the DP1 pay
 
 ## Delivered Session Payload
 
-The decrypted broker result is expected to be a `mint_succeeded` payload containing `session.token`, `session.sessionId`, `session.expiresAt`, and optional `session.relayerBaseUrl`.
+The decrypted broker result is expected to be a `mint_succeeded` payload containing `session.token`, `session.sessionId`, an expiry, and optional `session.relayerBaseUrl`.
+
+The expiry comes in two variants. A timed session carries `session.expiresAt` as an RFC3339 timestamp and stops working when it passes. A session the device owner chose to keep carries `session.persistent: true` with `session.expiresAt` null or absent: it does not expire, the lifetime the page asked for through `requestedExpiresInSeconds` is ignored, and it stays usable until the owner removes it in the mobile app or it is revoked. Either way the sample stores what it received and re-pairs when a display attempt comes back rejected.
 
 The wrapped requester button calls `displayDp1Playlist({ session, playlist })`; the requester library owns the `POST /api/cast` command envelope and FF1 response validation.
