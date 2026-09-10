@@ -40,17 +40,20 @@ import { mountPlayOnArtComputerButton } from "@feralfile/play";
 mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: dp1Playlist,
-  brokerBaseUrl: "https://handoff.feralfile.com"
+  brokerBaseUrl: "https://handoff.feralfile.com",
+  // Fallback for a session that carries no relayer URL; session.relayerBaseUrl wins when present.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
 
 The relayer base URL arrives inside the approved session
-(`session.relayerBaseUrl`) and is used from there. Read it from the session
-rather than hard-coding a host; the `relayerBaseUrl` option is only a fallback
-for a session that does not carry one. A `Content-Security-Policy` has to be
-written before any session exists, so `connect-src` needs the relayer origin up
-front: the [Integration Guide](../../../docs/integration.md#network-endpoints)
-lists the hosts to allow.
+(`session.relayerBaseUrl`) and wins whenever it is there, so never hard-code a
+host in display code. The `relayerBaseUrl` option above is the fallback for a
+session that carries none — without it such a session fails with `relayer base
+URL is required`. A `Content-Security-Policy` also has to be written before any
+session exists, so `connect-src` needs the relayer origin up front: the
+[Integration Guide](../../../docs/integration.md#network-endpoints) lists the
+hosts to allow.
 
 The popup instructs users to make sure the FF1 is open, open the Feral File
 mobile app, go to Settings -> Art Computers, select the FF1, and toggle Browser

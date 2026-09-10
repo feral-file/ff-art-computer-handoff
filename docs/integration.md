@@ -85,6 +85,10 @@ Useful options (see `PlayOnArtComputerButtonOptions` in
 - `browserInfo` — `{ name, userAgent, label }` shown to the user in the
   mobile-app approval prompt. Set `label` to something the visitor will
   recognize, e.g. your site name.
+- `relayerBaseUrl` — fallback relayer for a session that carries no URL of its
+  own; `session.relayerBaseUrl` wins when present, and without the fallback
+  such a session fails with `relayer base URL is required`. Set it to the host
+  in [Network endpoints](#network-endpoints).
 - `requestedExpiresInSeconds` — session lifetime your site asks for, a whole
   number of seconds from 1 to 31536000 (one year); a value outside that throws
   where you set it, stored session or not. Leave it unset to take the device
