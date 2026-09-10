@@ -60,11 +60,56 @@ type MintRequest struct {
 
 // MintResult is the host-created browser session returned to the browser only
 // inside an encrypted broker message.
+//
+// Persistent marks a session the device owner kept until they remove it. Such a
+// session has no expiry: ExpiresAt is ignored and the payload carries a null
+// expiresAt.
 type MintResult struct {
 	SessionID      string    `json:"sessionId"`
 	Token          string    `json:"token"`
 	ExpiresAt      time.Time `json:"expiresAt"`
+	Persistent     bool      `json:"persistent,omitempty"`
 	RelayerBaseURL string    `json:"relayerBaseUrl,omitempty"`
+}
+
+// MarshalJSON writes the session payload shape: a null expiresAt for an
+// owner-kept session, so a zero time never serializes as 0001-01-01.
+func (result MintResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(mintSessionPlaintext{
+		SessionID:      result.SessionID,
+		Token:          result.Token,
+		ExpiresAt:      result.expiresAt(),
+		Persistent:     result.Persistent,
+		RelayerBaseURL: result.RelayerBaseURL,
+	})
+}
+
+// UnmarshalJSON reads the session payload shape, treating a null or absent
+// expiresAt as no expiry.
+func (result *MintResult) UnmarshalJSON(data []byte) error {
+	var session mintSessionPlaintext
+	if err := json.Unmarshal(data, &session); err != nil {
+		return err
+	}
+	*result = MintResult{
+		SessionID:      session.SessionID,
+		Token:          session.Token,
+		Persistent:     session.Persistent,
+		RelayerBaseURL: session.RelayerBaseURL,
+	}
+	if session.ExpiresAt != nil {
+		result.ExpiresAt = *session.ExpiresAt
+	}
+	return nil
+}
+
+// expiresAt is nil for an owner-kept session and for a zero time.
+func (result MintResult) expiresAt() *time.Time {
+	if result.Persistent || result.ExpiresAt.IsZero() {
+		return nil
+	}
+	expiresAt := result.ExpiresAt
+	return &expiresAt
 }
 
 // MintRejection is an encrypted application-level rejection result.
@@ -122,11 +167,14 @@ type mintSuccessPlaintext struct {
 	Session          mintSessionPlaintext `json:"session"`
 }
 
+// mintSessionPlaintext is the session shape the browser requester parses. A null
+// expiresAt with persistent true is an owner-kept session that never expires.
 type mintSessionPlaintext struct {
-	SessionID      string    `json:"sessionId"`
-	Token          string    `json:"token"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	RelayerBaseURL string    `json:"relayerBaseUrl,omitempty"`
+	SessionID      string     `json:"sessionId"`
+	Token          string     `json:"token"`
+	ExpiresAt      *time.Time `json:"expiresAt"`
+	Persistent     bool       `json:"persistent,omitempty"`
+	RelayerBaseURL string     `json:"relayerBaseUrl,omitempty"`
 }
 
 type mintRejectionPlaintext struct {

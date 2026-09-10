@@ -299,6 +299,119 @@ func TestSendMintSuccessAndRejectionEncryptPayloads(t *testing.T) {
 	}
 }
 
+func TestSendMintSuccessSessionExpiryShape(t *testing.T) {
+	expiresAt := time.Date(2026, 6, 16, 11, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name           string
+		result         MintResult
+		wantExpiresAt  any
+		wantPersistent bool
+	}{
+		{
+			name:          "timed session keeps its expiry",
+			result:        MintResult{SessionID: "eps_timed", Token: "browser-token-secret", ExpiresAt: expiresAt, RelayerBaseURL: "https://relayer.example"},
+			wantExpiresAt: "2026-06-16T11:00:00Z",
+		},
+		{
+			name:           "owner-kept session has a null expiry",
+			result:         MintResult{SessionID: "eps_kept", Token: "browser-token-secret", Persistent: true, RelayerBaseURL: "https://relayer.example"},
+			wantExpiresAt:  nil,
+			wantPersistent: true,
+		},
+		{
+			name:           "owner-kept session ignores a set expiry",
+			result:         MintResult{SessionID: "eps_kept", Token: "browser-token-secret", ExpiresAt: expiresAt, Persistent: true},
+			wantExpiresAt:  nil,
+			wantPersistent: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newChannelHarness(t)
+			request := harness.mintRequest(t)
+			if _, err := harness.channel.SendMintSuccess(context.Background(), request, test.result); err != nil {
+				t.Fatal(err)
+			}
+			plaintext := harness.decryptMinterMessage(t, harness.sentMessages[0])
+			if strings.Contains(string(plaintext), "0001-01-01") {
+				t.Fatalf("zero time serialized into the session payload: %s", plaintext)
+			}
+			var raw struct {
+				Session map[string]any `json:"session"`
+			}
+			if err := json.Unmarshal(plaintext, &raw); err != nil {
+				t.Fatal(err)
+			}
+			expiresAtValue, present := raw.Session["expiresAt"]
+			if !present {
+				t.Fatalf("session payload must carry expiresAt: %s", plaintext)
+			}
+			if expiresAtValue != test.wantExpiresAt {
+				t.Fatalf("unexpected expiresAt %#v, want %#v", expiresAtValue, test.wantExpiresAt)
+			}
+			persistent, _ := raw.Session["persistent"].(bool)
+			if persistent != test.wantPersistent {
+				t.Fatalf("unexpected persistent %v, want %v", persistent, test.wantPersistent)
+			}
+
+			var success mintSuccessPlaintext
+			if err := json.Unmarshal(plaintext, &success); err != nil {
+				t.Fatal(err)
+			}
+			if success.Session.Persistent != test.wantPersistent {
+				t.Fatalf("unexpected decoded persistent: %#v", success.Session)
+			}
+			if test.wantPersistent {
+				if success.Session.ExpiresAt != nil {
+					t.Fatalf("owner-kept session must decode without an expiry: %#v", success.Session)
+				}
+				return
+			}
+			if success.Session.ExpiresAt == nil || !success.Session.ExpiresAt.Equal(expiresAt) {
+				t.Fatalf("timed session must decode with its expiry: %#v", success.Session)
+			}
+		})
+	}
+}
+
+func TestSendMintSuccessRequiresExpiryForTimedSession(t *testing.T) {
+	harness := newChannelHarness(t)
+	request := harness.mintRequest(t)
+	_, err := harness.channel.SendMintSuccess(context.Background(), request, MintResult{
+		SessionID: "eps_timed",
+		Token:     "browser-token-secret",
+	})
+	if err == nil {
+		t.Fatal("expected an error for a timed session without an expiry")
+	}
+	if len(harness.sentMessages) != 0 {
+		t.Fatalf("expected no sent message, got %d", len(harness.sentMessages))
+	}
+}
+
+func TestMintResultJSONRoundTrip(t *testing.T) {
+	expiresAt := time.Date(2026, 6, 16, 11, 0, 0, 0, time.UTC)
+	for _, result := range []MintResult{
+		{SessionID: "eps_timed", Token: "browser-token-secret", ExpiresAt: expiresAt, RelayerBaseURL: "https://relayer.example"},
+		{SessionID: "eps_kept", Token: "browser-token-secret", Persistent: true},
+	} {
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), "0001-01-01") {
+			t.Fatalf("zero time serialized into the session JSON: %s", encoded)
+		}
+		var decoded MintResult
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if decoded.Persistent != result.Persistent || decoded.SessionID != result.SessionID || !decoded.ExpiresAt.Equal(result.ExpiresAt) {
+			t.Fatalf("unexpected round trip %#v from %s", decoded, encoded)
+		}
+	}
+}
+
 func TestCloseSendsDelete(t *testing.T) {
 	harness := newChannelHarness(t)
 	if err := harness.channel.Close(context.Background()); err != nil {

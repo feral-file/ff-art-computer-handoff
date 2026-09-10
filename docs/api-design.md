@@ -332,17 +332,23 @@ type PairingDisplay struct {
 }
 
 type MintRequest struct {
-    ChannelID   string
-    Origin      string
-    BrowserInfo BrowserInfo
+    ChannelID                 string
+    Origin                    string
+    BrowserInfo               BrowserInfo
+    RequestedExpiresInSeconds int
 }
 
 type MintResult struct {
-    SessionID string
-    Token     string
-    ExpiresAt time.Time
+    SessionID  string
+    Token      string
+    ExpiresAt  time.Time
+    Persistent bool
 }
 ```
+
+`Persistent` marks a session the device owner kept until they remove it:
+`feral-controld` sets it, the encrypted session payload carries
+`"persistent": true` with a null `expiresAt`, and `ExpiresAt` is ignored.
 
 Expected library operations:
 
