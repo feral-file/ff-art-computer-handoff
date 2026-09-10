@@ -23,7 +23,9 @@ const session = await requestEphemeralSession({
 
 await displayDp1Playlist({
   session,
-  playlist: dp1Playlist
+  playlist: dp1Playlist,
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
 
@@ -41,7 +43,7 @@ mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: dp1Playlist,
   brokerBaseUrl: "https://handoff.feralfile.com",
-  // Fallback for a session that carries no relayer URL; session.relayerBaseUrl wins when present.
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
   relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```

@@ -62,7 +62,9 @@ import { mountPlayOnArtComputerButton } from "@feralfile/play";
 mountPlayOnArtComputerButton({
   container: "#play-on-art-computer",
   playlist: () => buildDp1PlaylistFromSelection(),
-  brokerBaseUrl: "https://handoff.feralfile.com"
+  brokerBaseUrl: "https://handoff.feralfile.com",
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
 });
 ```
 
@@ -112,7 +114,12 @@ const session = await requestEphemeralSessionWithPairingUi({
   browserInfo: { label: "My Gallery" }
 });
 
-await displayDp1Playlist({ session, playlist });
+await displayDp1Playlist({
+  session,
+  playlist,
+  // Fallback when the session carries no relayer URL; the host from Network endpoints.
+  relayerBaseUrl: "https://tv-cast-coordination.autonomy-system.workers.dev"
+});
 ```
 
 - `requestEphemeralSessionWithPairingUi` reuses a stored session when one
