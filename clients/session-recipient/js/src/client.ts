@@ -142,7 +142,13 @@ function hasExpiry(record: Record<string, unknown>): boolean {
  */
 export const maxRequestedExpiresInSeconds = 31_536_000;
 
-function validRequestedExpiresInSeconds(value: number | undefined): number | undefined {
+/**
+ * Checks a caller-supplied `requestedExpiresInSeconds`, returning it unchanged
+ * (or undefined when unset) and throwing on anything the device cannot honour.
+ * Every entry point calls this before it consults stored state, so a bad option
+ * fails the same way whether or not a session is already cached.
+ */
+export function validateRequestedExpiresInSeconds(value: number | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -530,7 +536,7 @@ function parseStoredSession(raw: string, origin: string): EphemeralBrowserSessio
 export async function requestEphemeralSession(options: RequestEphemeralSessionOptions): Promise<EphemeralBrowserSession> {
   const fetcher = options.fetchImpl ?? defaultFetch();
   const origin = currentOrigin();
-  const requestedExpiresInSeconds = validRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
+  const requestedExpiresInSeconds = validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const browserInfo = { ...defaultBrowserInfo(), ...options.browserInfo };
   const storage = resolveStorage(options.storage);
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);

@@ -2,6 +2,7 @@ import {
   displayDp1Playlist,
   readStoredEphemeralBrowserSession,
   requestEphemeralSession,
+  validateRequestedExpiresInSeconds,
   type BrowserInfo,
   type DisplayDp1PlaylistOptions,
   type Dp1Playlist,
@@ -328,6 +329,7 @@ export function createPairingCodeDialog(options: PairingCodeDialogOptions): Pair
 export async function requestEphemeralSessionWithPairingUi(
   options: RequestEphemeralSessionWithPairingUiOptions
 ): Promise<EphemeralBrowserSession> {
+  validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const storage = resolveUiStorage(options.storage);
   const origin = currentOriginForUi();
   const existingSession = storage === undefined ? undefined : readStoredEphemeralBrowserSession(storage, origin);
@@ -361,6 +363,7 @@ export async function requestEphemeralSessionWithPairingUi(
 }
 
 export function mountPlayOnArtComputerButton(options: PlayOnArtComputerButtonOptions): PlayOnArtComputerButtonHandle {
+  validateRequestedExpiresInSeconds(options.requestedExpiresInSeconds);
   const ownerDocument = options.document ?? requiredDocument();
   ensureDefaultStyles(ownerDocument);
   const container = resolveContainer(ownerDocument, options.container);

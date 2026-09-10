@@ -248,6 +248,40 @@ describe("session UI helpers", () => {
     });
     expect(createDialog).not.toHaveBeenCalled();
   });
+
+  it("rejects an invalid requested lifetime even when a session is cached", async () => {
+    const storage = memoryStorage();
+    storeEphemeralBrowserSession(storage, testOrigin, {
+      token: "browser-session-token",
+      sessionId: "sess_123",
+      expiresAt: "2030-01-01T00:00:00.000Z"
+    });
+
+    await expect(requestEphemeralSessionWithPairingUi({
+      brokerBaseUrl: "https://pairing.example",
+      storage: { storage },
+      requestedExpiresInSeconds: 1e21
+    })).rejects.toThrow("requestedExpiresInSeconds must be a whole number of seconds from 1 to 31536000");
+  });
+
+  it("reuses a cached session with a valid requested lifetime", async () => {
+    const storage = memoryStorage();
+    storeEphemeralBrowserSession(storage, testOrigin, {
+      token: "browser-session-token",
+      sessionId: "sess_123",
+      expiresAt: "2030-01-01T00:00:00.000Z"
+    });
+
+    await expect(requestEphemeralSessionWithPairingUi({
+      brokerBaseUrl: "https://pairing.example",
+      storage: { storage },
+      requestedExpiresInSeconds: 3600
+    })).resolves.toEqual({
+      token: "browser-session-token",
+      sessionId: "sess_123",
+      expiresAt: "2030-01-01T00:00:00.000Z"
+    });
+  });
 });
 
 describe("mountPlayOnArtComputerButton", () => {
@@ -287,6 +321,65 @@ describe("mountPlayOnArtComputerButton", () => {
     expect(resolved).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(createDialog).not.toHaveBeenCalled();
+  });
+
+  it("refuses to mount with an invalid requested lifetime even when a session is cached", () => {
+    const storage = memoryStorage();
+    storeEphemeralBrowserSession(storage, testOrigin, {
+      token: "browser-session-token",
+      sessionId: "sess_123",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      relayerBaseUrl: "https://relayer.example"
+    });
+    const { document } = fakeDocumentWithContainer();
+    const fetchImpl = vi.fn<typeof fetch>(() => {
+      throw new Error("cast should not be attempted");
+    });
+
+    expect(() => mountPlayOnArtComputerButton({
+      container: "#play-button-container",
+      playlist: { dpVersion: "1.1.0", title: "Stored Session Playlist", items: [] },
+      brokerBaseUrl: "https://pairing.example",
+      storage: { storage },
+      requestedExpiresInSeconds: 1e21,
+      fetchImpl,
+      document
+    })).toThrow("requestedExpiresInSeconds must be a whole number of seconds from 1 to 31536000");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("casts with a cached session and a valid requested lifetime", async () => {
+    const storage = memoryStorage();
+    storeEphemeralBrowserSession(storage, testOrigin, {
+      token: "browser-session-token",
+      sessionId: "sess_123",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      relayerBaseUrl: "https://relayer.example"
+    });
+    const { document } = fakeDocumentWithContainer();
+    const fetchImpl = vi.fn<typeof fetch>((input) => {
+      expect(requestUrl(input)).toBe("https://relayer.example/api/cast");
+      return Promise.resolve(jsonResponse({ message: { ok: true } }));
+    });
+    let resolved = false;
+    const handle = mountPlayOnArtComputerButton({
+      container: "#play-button-container",
+      playlist: { dpVersion: "1.1.0", title: "Stored Session Playlist", items: [] },
+      brokerBaseUrl: "https://pairing.example",
+      storage: { storage },
+      requestedExpiresInSeconds: 3600,
+      fetchImpl,
+      document,
+      onSuccess: () => {
+        resolved = true;
+      }
+    });
+
+    handle.element.click();
+    await nextTick();
+
+    expect(resolved).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("opens the pairing dialog with the mounted document when no local session exists", async () => {
